@@ -1007,12 +1007,16 @@
   const btnCerrarModal = document.getElementById('btnCerrarModal');
 
   let geminiRequestActive = false;
-  let retryCount = 0;
-  const maxRetries = 1;
+  let morePlantInfoCache = null;
 
   function saberMas() {
+    if (geminiRequestActive) return;
+    if (morePlantInfoCache) {
+      mostrarMasInformacion(morePlantInfoCache);
+      return;
+    }
     geminiRequestActive = true;
-    retryCount = 0;
+    btnSaberMas.disabled = true;
     modalTitle.textContent = `Te estoy buscando mas info sobre l@ ${plantData.nombre_comun}`;
     
     modalBody.innerHTML = `<div class="plant-loader"></div><p>La IA está buscando <strong>${plantData.nombre_comun}</strong>...</p>`;
@@ -1030,8 +1034,17 @@
 
     if(!geminiRequestActive) return;
 
-    if (response.success && response.data) {
-      const info = response.data;
+    if (response && response.success && response.data) {
+      morePlantInfoCache = response.data;
+      geminiRequestActive = false;
+      btnSaberMas.disabled = false;
+      mostrarMasInformacion(morePlantInfoCache);
+    } else {
+      onSaberMasFailure({ message: response && response.message || "No fue posible consultar la información de la planta." });
+    }
+  }
+
+  function mostrarMasInformacion(info) {
       modalTitle.textContent = `Aquí tienes más información sobre ${plantData.nombre_comun}`;
       const similaresHtml = Array.isArray(info.plantasSimilares) && info.plantasSimilares.length
         ? info.plantasSimilares.map(planta => `<p><strong>${escapeHtml(planta.nombreComun || '')} (${escapeHtml(planta.nombreCientifico || 'N/A')}):</strong> ${escapeHtml(planta.descripcion || 'Sin descripción.')}</p>`).join('')
@@ -1046,22 +1059,22 @@
           <h4>Plantas Similares</h4>${similaresHtml}
           <h4>Fuentes consultadas</h4>${fuentesHtml}
         </div>`;
-    } else {
-      onSaberMasFailure({ message: response.message || "No fue posible consultar la información de la planta." });
-    }
   }
 
 
   function onSaberMasFailure(error) {
     if (!geminiRequestActive) return;
-
+    geminiRequestActive = false;
+    btnSaberMas.disabled = false;
     modalTitle.textContent = "Inténtalo mas tarde";
     modalBody.innerHTML = `<p>${escapeHtml(error.message || 'De momento no podemos ofrecer más información. Inténtalo más tarde.')}</p>`;
   }
 
   function cerrarSaberMasModal() {
     geminiRequestActive = false;
+    btnSaberMas.disabled = false;
     modal.classList.remove('active');
+    document.body.classList.remove('modal-open');
   }
 
   function escapeHtml(value) {

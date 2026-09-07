@@ -817,6 +817,11 @@ function handleFiles(event) {
   });
 
   function generateStyledQR(url, logoBase64, callback) {
+    if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+      console.error('generateStyledQR recibió una URL pública inválida.');
+      callback(null);
+      return;
+    }
     const desiredResolution = 1000; // Píxeles. Un buen punto de partida para impresión.
                                     // Puedes probar con 1500 o 2000 si necesitas más.
     const canvas = document.createElement('canvas');
@@ -897,7 +902,14 @@ function handleFiles(event) {
         ctx.restore(); // Restaurar el contexto del canvas
       }
       
-      callback(canvas.toDataURL('image/png'));
+      try {
+        const qrBase64 = canvas.toDataURL('image/png');
+        console.log('QR generado:', { plantViewUrl: url, exists: !!qrBase64, length: qrBase64.length, mime: qrBase64.split(';', 1)[0] });
+        callback(qrBase64);
+      } catch (error) {
+        console.error('No se pudo exportar el QR:', error);
+        callback(null);
+      }
     }
   }
 
@@ -942,6 +954,30 @@ function handleFiles(event) {
           showLoader('Generando Código QR...');
           const continueProcess = (logoBase64) => {
             generateStyledQR(dataResponse.plantViewUrl, logoBase64, (qrBase64) => {
+              if (!isValidQrDataUrl(qrBase64)) {
+                hideLoader();
+                submitBtn.disabled = false;
+                statusDiv.textContent = 'No se pudo generar un código QR válido. Inténtalo nuevamente.';
+                statusDiv.style.color = 'red';
+                const retryButton = document.createElement('button');
+                retryButton.type = 'button';
+                retryButton.textContent = 'Reintentar generar QR';
+                retryButton.className = 'btn-gemini';
+                retryButton.addEventListener('click', function() {
+                  retryButton.remove();
+                  submitBtn.disabled = true;
+                  showLoader('Generando Código QR...');
+                  continueProcess(null); // The QR remains usable without the optional logo.
+                });
+                statusDiv.insertAdjacentElement('afterend', retryButton);
+                console.error('QR inválido; no se llamará savePlantFiles.', {
+                  plantId: dataResponse.plantId,
+                  plantViewUrl: dataResponse.plantViewUrl,
+                  qrExists: !!qrBase64,
+                  qrLength: typeof qrBase64 === 'string' ? qrBase64.length : 0
+                });
+                return;
+              }
               showLoader('Guardando archivos y enviando correo...', false); // No cancelable en el último paso
               google.script.run
                 .withSuccessHandler(onSuccess)
@@ -956,10 +992,19 @@ function handleFiles(event) {
         })
         .withFailureHandler(onFailure)
         .registerPlantData(formObject);
-    });
+    }).catch(error => onFailure({ message: 'No se pudieron preparar las fotografías: ' + (error.message || error) }));
   });
 
+  function isValidQrDataUrl(value) {
+    return typeof value === 'string' && /^data:image\/png;base64,[A-Za-z0-9+/=\s]+$/i.test(value) && value.split(',')[1].replace(/\s/g, '').length > 0;
+  }
+
   function onSuccess(response) {
+
+  if (!response || !response.success) {
+    onFailure({ message: response && response.message || 'No fue posible guardar los archivos de la planta.' });
+    return;
+  }
 
   hideLoader();
 
@@ -968,7 +1013,7 @@ function handleFiles(event) {
   const form = document.getElementById('plantForm');
 
   mainTitle.textContent = "Registrado con Éxito";
-  statusDiv.textContent = "Planta registrada y QR enviado a tu correo.";
+  statusDiv.textContent = response.warning || "Planta registrada y QR enviado a tu correo.";
   statusDiv.style.color = 'green';
   
   form.style.display = 'none';
@@ -1062,12 +1107,14 @@ let retryCount = 0;
 const maxRetries = 1;
 
   function identificar() {
+    if (geminiRequestActive) return;
     if (photoFiles.length === 0) {
       alert("Por favor, sube o toma una foto primero para poder identificar la planta.");
       return;
     }
     
     geminiRequestActive = true;
+    btnIdentificar.disabled = true;
     retryCount = 0;
     btnAceptar.disabled = true;
     modalTitle.textContent = "Identificando Planta";
@@ -1096,7 +1143,8 @@ const maxRetries = 1;
   function onGeminiSuccess(response) {
     if (!geminiRequestActive) return;
     
-    if (response.success && response.data.nombreComun) {
+    if (response && response.success && response.data && response.data.nombreComun) {
+      geminiRequestActive = false;
       ultimaIdentificacion = response.data;
       modalTitle.textContent = "¡Planta Identificada!";
       modalBody.innerHTML = `
@@ -1109,8 +1157,9 @@ const maxRetries = 1;
         </div>
       `;
       btnAceptar.disabled = false;
+      btnIdentificar.disabled = false;
     } else {
-      onGeminiFailure({ message: response.message || "No fue posible identificar la planta con suficiente confianza." });
+      onGeminiFailure({ message: response && response.message || "No fue posible identificar la planta con suficiente confianza." });
     }
   }
   
@@ -1125,8 +1174,10 @@ const maxRetries = 1;
       reader.onload = (e) => llamarApiGemini({ base64: e.target.result, mimeType: photoFiles[0].type });
       reader.readAsDataURL(photoFiles[0]);
     } else {
+      geminiRequestActive = false;
       modalTitle.textContent = "No pude leerla";
       modalBody.innerHTML = `<p>${escapeHtml(error.message || 'No pude identificar esa planta.')}<br>Intenta tomar una foto más clara o ingrésala manualmente.</p>`;
+      btnIdentificar.disabled = false;
     }
   }
 
@@ -1142,7 +1193,9 @@ const maxRetries = 1;
 
   function cerrarModal() {
     geminiRequestActive = false;
+    btnIdentificar.disabled = false;
     modal.classList.remove('active');
+    document.body.classList.remove('modal-open');
   }
 
   function escapeHtml(value) {
