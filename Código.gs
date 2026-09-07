@@ -1049,3 +1049,160 @@ function getAdminEmails() {
     return [];
   }
 }
+
+/****************************************************************
+ * DIAGNÓSTICOS TEMPORALES DEL SISTEMA
+ * No llaman savePlantFiles(), identificarPlanta(), registerPlantData() ni MailApp.
+ ****************************************************************/
+function diagnosticRealFolderDriveAccess(imageInput) {
+  const report = {
+    success: false,
+    operation: 'diagnosticRealFolderDriveAccess',
+    coordinatorEmail: '', rootFolderId: '', coordinatorFolderId: '', temporaryFolderId: '',
+    temporaryFolderName: '', photo: {}, qr: {}, operations: [], error: null
+  };
+  let currentOperation = 'preparación';
+  function technicalError_(error) {
+    return { message: error && error.message || String(error), toString: error && error.toString ? error.toString() : String(error), stack: error && error.stack || '' };
+  }
+  function runOperation_(target, name, fn) {
+    currentOperation = target + '.' + name;
+    try {
+      const value = fn();
+      report.operations.push({ target: target, operation: name, success: true, details: value == null ? '' : String(value) });
+      return value;
+    } catch (error) {
+      const details = technicalError_(error);
+      report.operations.push({ target: target, operation: name, success: false, details: details.message, error: details });
+      return null;
+    }
+  }
+  try {
+    // savePlantFiles() uses registrado_por as the coordinator. For an isolated
+    // diagnostic there is no plant row, so use the same owner value cached by checkUserAccess().
+    currentOperation = 'obtener coordinador actual';
+    report.coordinatorEmail = String(CacheService.getUserCache().get('currentAdmin') || '').trim();
+    if (!report.coordinatorEmail) throw new Error('No existe currentAdmin en User Cache. Inicie sesión nuevamente para cargar el coordinador actual.');
+
+    const image = getGeminiImageInput_(imageInput);
+    if (!image.success) throw new Error('Fotografía de diagnóstico inválida: ' + image.message);
+    const photoBlob = Utilities.newBlob(Utilities.base64Decode(image.base64), image.mimeType,
+      'DIAGNOSTICO_REAL_DRIVE_FOTO_' + new Date().getTime());
+    const qrBlob = Utilities.newBlob(Utilities.base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL7WAAAAABJRU5ErkJggg=='), 'image/png',
+      'DIAGNOSTICO_REAL_DRIVE_QR_' + new Date().getTime() + '.png');
+
+    currentOperation = 'DriveApp.getFolderById(FOLDER_ID)';
+    const rootFolder = DriveApp.getFolderById(FOLDER_ID);
+    report.rootFolderId = rootFolder.getId();
+    currentOperation = 'getOrCreateFolder(rootFolder, coordinatorEmail)';
+    const coordinatorFolder = getOrCreateFolder(rootFolder, report.coordinatorEmail);
+    report.coordinatorFolderId = coordinatorFolder.getId();
+    report.temporaryFolderName = 'DIAGNOSTICO_REAL_DRIVE_' + new Date().getTime();
+    currentOperation = 'crear carpeta temporal';
+    const temporaryFolder = coordinatorFolder.createFolder(report.temporaryFolderName);
+    report.temporaryFolderId = temporaryFolder.getId();
+
+    function diagnoseFile_(target, blob, result) {
+      const file = runOperation_(target, 'createFile', function() { return temporaryFolder.createFile(blob); });
+      if (!file) return;
+      result.created = true;
+      const fileId = runOperation_(target, 'getId', function() { return file.getId(); });
+      if (fileId) result.id = fileId;
+      const url = runOperation_(target, 'getUrl', function() { return file.getUrl(); });
+      if (url) result.url = url;
+      const reloaded = fileId && runOperation_(target, 'getFileById', function() { return DriveApp.getFileById(fileId).getId(); });
+      if (reloaded) result.reloadedId = reloaded;
+      const bytes = runOperation_(target, 'getBlob', function() { return file.getBlob().getBytes().length; });
+      if (bytes !== null && bytes !== undefined) result.blobBytes = bytes;
+      runOperation_(target, 'setSharing(ANYONE_WITH_LINK, VIEW)', function() {
+        file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+        return 'OK';
+      });
+      result.summary = {};
+      report.operations.filter(function(operation) { return operation.target === target; }).forEach(function(operation) {
+        result.summary[operation.operation] = operation.success ? 'OK' : 'ERROR: ' + operation.details;
+      });
+    }
+    diagnoseFile_('fotografía', photoBlob, report.photo);
+    diagnoseFile_('QR', qrBlob, report.qr);
+    report.success = report.operations.every(function(operation) { return operation.success; });
+    report.message = report.success ? 'Todas las operaciones Drive finalizaron correctamente.' : 'Una o más operaciones Drive fallaron; revise operations para el error técnico exacto.';
+  } catch (error) {
+    report.error = technicalError_(error);
+    report.message = 'Falló la preparación de la estructura real de Drive: ' + report.error.message;
+  }
+  Logger.log('[DIAGNOSTICO_REAL_DRIVE] ' + JSON.stringify(report));
+  return report;
+}
+
+function diagnosticGeminiIdentification(imageInput) {
+  const report = {
+    success: false, operation: 'diagnosticGeminiIdentification', apiKeyConfigured: false,
+    model: GEMINI_MODEL, mimeType: '', base64Length: 0, base64Decodable: false,
+    mimeSupported: false, structured: {}, freeForm: {}, error: null
+  };
+  function details_(response, operation) {
+    const status = response.getResponseCode();
+    const body = response.getContentText();
+    let parsed = null;
+    try { parsed = JSON.parse(body); } catch (ignore) {}
+    const candidate = parsed && parsed.candidates && parsed.candidates[0] || null;
+    const parts = candidate && candidate.content && candidate.content.parts || [];
+    const text = parts.map(function(part) { return part && part.text || ''; }).join('');
+    return {
+      operation: operation, httpStatus: status, response: parsed || body,
+      candidates: parsed && parsed.candidates || null, finishReason: candidate && candidate.finishReason || null,
+      modelVersion: parsed && parsed.modelVersion || null, text: text,
+      httpErrorMessage: status >= 200 && status < 300 ? '' : (parsed && parsed.error && parsed.error.message || body)
+    };
+  }
+  function call_(payload, operation) {
+    try {
+      const response = UrlFetchApp.fetch(GEMINI_API_BASE_URL + GEMINI_MODEL + ':generateContent', {
+        method: 'post', contentType: 'application/json', payload: JSON.stringify(payload),
+        headers: { 'x-goog-api-key': PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY') }, muteHttpExceptions: true
+      });
+      return details_(response, operation);
+    } catch (error) {
+      return { operation: operation, httpStatus: null, response: null, candidates: null, finishReason: null, modelVersion: null, text: '', error: error.message || String(error) };
+    }
+  }
+  try {
+    const raw = typeof imageInput === 'string' ? { base64: imageInput } : (imageInput || {});
+    let base64 = raw.base64 || raw.data || '';
+    let mimeType = raw.mimeType || raw.type || '';
+    const dataUrl = /^data:([^;,]+);base64,(.+)$/i.exec(base64);
+    if (dataUrl) { mimeType = mimeType || dataUrl[1]; base64 = dataUrl[2]; }
+    report.mimeType = String(mimeType).toLowerCase();
+    report.base64Length = String(base64).replace(/\s/g, '').length;
+    report.mimeSupported = /^image\/(jpeg|png|webp|gif)$/i.test(report.mimeType);
+    try { report.base64Decodable = Utilities.base64Decode(String(base64).replace(/\s/g, '')).length > 0; } catch (error) { report.base64DecodeError = error.message || String(error); }
+    report.apiKeyConfigured = !!PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+    if (!report.apiKeyConfigured) throw new Error('GEMINI_API_KEY no está configurada (la clave no se muestra).');
+    if (!report.mimeSupported) throw new Error('MIME no compatible: ' + report.mimeType);
+    if (!report.base64Decodable) throw new Error('Base64 no se pudo decodificar.');
+    base64 = String(base64).replace(/\s/g, '');
+
+    const structuredPayload = { contents: [{ parts: [
+      { text: 'Analiza esta fotografía botánica. Identifica una especie SOLO si los rasgos visibles permiten una identificación razonable. Si no hay suficiente confianza, devuelve identificado:false. No adivines especies, usos medicinales ni toxicidad. El uso debe ser una descripción breve y prudente.' },
+      { inline_data: { mime_type: report.mimeType, data: base64 } }
+    ] }], generationConfig: { responseMimeType: 'application/json', responseJsonSchema: plantIdentificationSchema_() } };
+    report.structured = call_(structuredPayload, 'IDENTIFICACIÓN ESTRUCTURADA');
+    report.structured.parsedJson = parseGeminiJson_(report.structured.response);
+    const identified = report.structured.parsedJson || {};
+    report.structured.identificado = identified.identificado;
+    report.structured.nombreComun = identified.nombreComun;
+    report.structured.nombreCientifico = identified.nombreCientifico;
+    report.structured.familia = identified.familia;
+    report.structured.uso = identified.uso;
+    report.structured.confidence = identified.confidence;
+
+    const freePrompt = 'Analiza esta fotografía de una planta.\n\nIntenta identificarla usando los rasgos visibles.\n\nResponde en español.\n\nIndica:\n- nombre común\n- nombre científico\n- familia\n- nivel de confianza de 0 a 100\n- explicación breve de qué rasgos observaste\n\nSi no puedes identificar la especie con seguridad, indica las especies candidatas más probables y explica por qué.\n\nNo inventes información.';
+    report.freeForm = call_({ contents: [{ parts: [{ text: freePrompt }, { inline_data: { mime_type: report.mimeType, data: base64 } }] }] }, 'RESPUESTA LIBRE');
+    report.success = true;
+  } catch (error) {
+    report.error = { message: error.message || String(error), stack: error.stack || '' };
+  }
+  Logger.log('[DIAGNOSTICO_GEMINI] ' + JSON.stringify(report));
+  return report;
+}
