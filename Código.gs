@@ -523,6 +523,18 @@ function diagnosticRegisterPlantData() {
 }
 
 function diagnosticSavePlantFiles(plantId, qrBase64, imagesData) {
+  return diagnosticSavePlantFiles_(plantId, qrBase64, imagesData, true);
+}
+
+/**
+ * Prueba aislada de archivos privados. Solo acepta registros TEST_DIAGNOSTICO,
+ * no envía correo y no cambia savePlantFiles().
+ */
+function diagnosticSavePlantFilesPrivate(plantId, qrBase64, imagesData) {
+  return diagnosticSavePlantFiles_(plantId, qrBase64, imagesData, false);
+}
+
+function diagnosticSavePlantFiles_(plantId, qrBase64, imagesData, testSetSharing) {
   const result = {
     success: false, failedStep: '', message: '', steps: [], plantId: plantId || '', plantViewUrl: '',
     imageFileId: '', imageUrl: '', qrFileId: '', qrUrl: '', imageBase64Length: 0,
@@ -535,7 +547,7 @@ function diagnosticSavePlantFiles(plantId, qrBase64, imagesData) {
     11: 'QR convertido correctamente a Blob', 12: 'Spreadsheet localizado',
     13: 'Registro de planta localizado', 14: 'FOLDER_ID localizado',
     15: 'Carpeta del coordinador localizada/creada', 16: 'Carpeta de la planta localizada/creada',
-    17: 'Fotografía guardada en Drive', 18: 'ID de la fotografía obtenido',
+    '17A': 'DriveApp.createFile(imageBlob)', '17B': 'imageFile.setSharing(...)', 18: 'ID de la fotografía obtenido',
     19: 'QR guardado en Drive', 20: 'ID del QR obtenido',
     21: 'URL de la fotografía generada', 22: 'URL del QR generada',
     23: 'urls_imagenes actualizado en Sheets', 24: 'url_qr actualizado en Sheets'
@@ -576,17 +588,35 @@ function diagnosticSavePlantFiles(plantId, qrBase64, imagesData) {
     currentStep = 14; const root = DriveApp.getFolderById(FOLDER_ID); pass(14, 'FOLDER_ID localizado: ' + root.getId());
     currentStep = 15; const coordinatorFolder = getOrCreateFolder(root, result.coordinatorEmail); pass(15, 'Carpeta coordinador=' + coordinatorFolder.getName() + ', id=' + coordinatorFolder.getId());
     currentStep = 16; const folder = getOrCreateFolder(coordinatorFolder, result.plantName); result.folderName = folder.getName(); pass(16, 'Carpeta temporal=' + result.folderName + ', id=' + folder.getId());
-    currentStep = 17; imageBlob.setName('DIAGNOSTICO_TEST_FOTO_' + new Date().getTime() + '_' + (image.name || 'foto')); const imageFile = folder.createFile(imageBlob);
-    if (!imageFile) throw new Error('DriveApp.createFile() devolvió un archivo de fotografía nulo.'); imageFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); pass(17, 'Archivo foto creado: name=' + imageFile.getName() + ', mime=' + imageFile.getMimeType() + ', size=' + imageFile.getSize());
-    currentStep = 18; result.imageFileId = imageFile.getId(); if (!result.imageFileId || !DriveApp.getFileById(result.imageFileId)) throw new Error('No se pudo volver a localizar el archivo de fotografía en Drive.'); pass(18, 'ID foto=' + result.imageFileId);
+    imageBlob.setName('DIAGNOSTICO_TEST_FOTO_' + new Date().getTime() + '_' + (image.name || 'foto'));
+    currentStep = '17A'; log('17A', 'createFile iniciado'); const imageFile = folder.createFile(imageBlob);
+    if (!imageFile) throw new Error('DriveApp.createFile() devolvió un archivo de fotografía nulo.');
+    result.imageFileId = imageFile.getId(); result.imageUrl = imageFile.getUrl();
+    pass('17A', 'createFile completado; fileId=' + result.imageFileId + ', nombre=' + imageFile.getName() + ', MIME=' + imageFile.getMimeType() + ', tamaño=' + imageFile.getSize() + ', URL=' + result.imageUrl);
+    if (testSetSharing) {
+      currentStep = '17B'; log('17B', 'setSharing iniciado');
+      try {
+        imageFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+        pass('17B', 'setSharing completado');
+      } catch (sharingError) {
+        fail('17B', sharingError);
+        result.message = 'CREATEFILE OK — SETSHARING FALLÓ: ' + (sharingError.message || sharingError);
+        return result;
+      }
+    } else {
+      pass('17B', 'No ejecutado por diseño: archivo privado.');
+    }
+    currentStep = 18; result.imageFileId = imageFile.getId(); const reloadedImageFile = result.imageFileId && DriveApp.getFileById(result.imageFileId); if (!reloadedImageFile) throw new Error('No se pudo volver a localizar el archivo de fotografía en Drive.'); const reloadedImageBlob = reloadedImageFile.getBlob(); if (!reloadedImageBlob) throw new Error('No se pudo leer el Blob de la fotografía privada mediante DriveApp.getFileById().'); pass(18, 'ID foto=' + result.imageFileId + '; DriveApp.getFileById().getBlob() OK, bytes=' + reloadedImageBlob.getBytes().length);
     currentStep = 21; result.imageUrl = imageFile.getUrl(); if (!isHttpUrl_(result.imageUrl)) throw new Error('Drive devolvió una URL de fotografía inválida: ' + result.imageUrl); pass(21, 'URL foto=' + result.imageUrl);
     currentStep = 19; qrBlob.setName('DIAGNOSTICO_TEST_QR_' + new Date().getTime() + '.png'); const qrFile = folder.createFile(qrBlob);
-    if (!qrFile) throw new Error('DriveApp.createFile() devolvió un archivo QR nulo.'); qrFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); pass(19, 'Archivo QR creado: name=' + qrFile.getName() + ', mime=' + qrFile.getMimeType() + ', size=' + qrFile.getSize());
-    currentStep = 20; result.qrFileId = qrFile.getId(); if (!result.qrFileId || !DriveApp.getFileById(result.qrFileId)) throw new Error('No se pudo volver a localizar el archivo QR en Drive.'); pass(20, 'ID QR=' + result.qrFileId);
+    if (!qrFile) throw new Error('DriveApp.createFile() devolvió un archivo QR nulo.');
+    if (testSetSharing) qrFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    pass(19, 'Archivo QR creado' + (testSetSharing ? ' y setSharing completado' : ' privado (setSharing no ejecutado)') + ': name=' + qrFile.getName() + ', mime=' + qrFile.getMimeType() + ', size=' + qrFile.getSize());
+    currentStep = 20; result.qrFileId = qrFile.getId(); const reloadedQrFile = result.qrFileId && DriveApp.getFileById(result.qrFileId); if (!reloadedQrFile) throw new Error('No se pudo volver a localizar el archivo QR en Drive.'); pass(20, 'ID QR=' + result.qrFileId + '; DriveApp.getFileById() OK');
     currentStep = 22; result.qrUrl = qrFile.getUrl(); if (!isHttpUrl_(result.qrUrl)) throw new Error('Drive devolvió una URL de QR inválida: ' + result.qrUrl); pass(22, 'URL QR=' + result.qrUrl);
     currentStep = 23; const imageCell = sheet.getRange(result.sheetRow, imagesCol + 1); const imageValue = JSON.stringify([result.imageUrl]); imageCell.setValue(imageValue); SpreadsheetApp.flush(); const imageRead = imageCell.getValue(); if (imageRead !== imageValue) throw new Error('Verificación Sheets foto falló. Escrito=' + imageValue + ', leído=' + imageRead); pass(23, 'Fila=' + result.sheetRow + ', columna=' + (imagesCol + 1) + ', escrito/leído=' + imageRead);
     currentStep = 24; const qrCell = sheet.getRange(result.sheetRow, qrCol + 1); qrCell.setValue(result.qrUrl); SpreadsheetApp.flush(); const qrRead = qrCell.getValue(); if (qrRead !== result.qrUrl) throw new Error('Verificación Sheets QR falló. Escrito=' + result.qrUrl + ', leído=' + qrRead); pass(24, 'Fila=' + result.sheetRow + ', columna=' + (qrCol + 1) + ', escrito/leído=' + qrRead);
-    result.success = true; result.message = 'PRUEBA COMPLETADA SIN ENVIAR CORREO'; Logger.log('[DIAGNOSTICO] COMPLETADO: sin MailApp.sendEmail().'); return result;
+    result.success = true; result.message = (testSetSharing ? 'PRUEBA DE AISLAMIENTO COMPLETADA' : 'PRUEBA PRIVADA COMPLETADA') + ' SIN ENVIAR CORREO'; Logger.log('[DIAGNOSTICO] COMPLETADO: sin MailApp.sendEmail().'); return result;
   } catch (error) { fail(currentStep, error); return result; }
 }
 
