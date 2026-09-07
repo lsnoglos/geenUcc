@@ -4,7 +4,10 @@ const FOLDER_ID = '1LzHgraT5VU9uLWcp3RczHcYEPXs-2W0a';
 const PLANTS_DATA_SHEET_NAME = 'plantas';
 const APP_NAME = 'UNIVERSIDADES VERDES UCC';
 const DEFAULT_LOGO_ID = '1gahFroR2tOmSjlIzRy_qxXMbQdIpH79C';
-const API_KEY = "AIzaSyCf2ef_6L-CrK3Bnp_-3xPy842SbNoFajA";
+// Gemini is deliberately configured through Script Properties, never client-side.
+// Set GEMINI_API_KEY in Project Settings > Script properties before using these features.
+const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models/';
 
 const HEADERS = {
   ID: 'id_planta',
@@ -458,86 +461,124 @@ function savePlantFiles(plantId, qrBase64, imagesData) {
   }
 }
 
-function identificarPlanta(imageBase64) {
-  const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + API_KEY;
+function identificarPlanta(imageInput) {
+  const image = getGeminiImageInput_(imageInput);
+  if (!image.success) return image;
 
   const payload = {
-    contents: [{
-      parts: [
-        { text: "Identifica la planta en la imagen. Responde ÚNICAMENTE con un JSON válido, sin explicaciones ni markdown, con las claves: \"nombreComun\", \"nombreCientifico\", \"familia\", \"uso\"." },
-        { inline_data: { mime_type: "image/jpeg", data: imageBase64 } }
-      ]
-    }]
+    contents: [{ parts: [
+      { text: 'Analiza esta fotografía botánica. Identifica una especie SOLO si los rasgos visibles permiten una identificación razonable. Si no hay suficiente confianza, devuelve identificado:false. No adivines especies, usos medicinales ni toxicidad. El uso debe ser una descripción breve y prudente.' },
+      { inline_data: { mime_type: image.mimeType, data: image.base64 } }
+    ] }],
+    generationConfig: { responseMimeType: 'application/json', responseJsonSchema: plantIdentificationSchema_() }
   };
+  const result = callGemini_(payload, 'identificación');
+  if (!result.success) return result;
 
-  const options = {
-    method: "post",
-    contentType: "application/json",
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true
-  };
-
-  try {
-    const response = UrlFetchApp.fetch(url, options);
-    const resultText = response.getContentText();
-    Logger.log("Respuesta de Gemini: " + resultText);
-
-    const resultJson = JSON.parse(resultText);
-    const content = resultJson.candidates[0].content.parts[0].text;
-
-    const cleanedJsonString = content.replace(/```json/g, "").replace(/```/g, "").trim();
-    const parsedData = JSON.parse(cleanedJsonString);
-
-    return { success: true, data: parsedData };
-
-  } catch (e) {
-    Logger.log("Error al contactar con la API de Gemini: " + e.toString());
-    return { success: false, error: e.toString() };
+  const data = parseGeminiJson_(result.response);
+  if (!data || data.identificado !== true || !isNonEmptyString_(data.nombreComun) ||
+      !isNonEmptyString_(data.nombreCientifico) || !isNonEmptyString_(data.familia)) {
+    return { success: false, message: 'No fue posible identificar la planta con suficiente confianza.' };
   }
+  return { success: true, data: {
+    nombreComun: data.nombreComun.trim(), nombreCientifico: data.nombreCientifico.trim(),
+    familia: data.familia.trim(), uso: isNonEmptyString_(data.uso) ? data.uso.trim() : '',
+    confidence: typeof data.confidence === 'number' ? data.confidence : undefined
+  } };
 }
 
 function getMorePlantInfo(plantInfo) {
-  const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + API_KEY;
+  plantInfo = plantInfo || {};
+  const prompt = `Investiga con Google Search la siguiente planta y responde en español con precisión.
+Nombre común: ${safePromptValue_(plantInfo.nombre_comun)}
+Nombre científico: ${safePromptValue_(plantInfo.nombre_cientifico)}
+Familia: ${safePromptValue_(plantInfo.familia)}
+Ubicación registrada: ${safePromptValue_(plantInfo.ubicacion)}
 
-  const prompt = `Basado en la siguiente planta:
-    - Nombre Común: ${plantInfo.nombre_comun}
-    - Nombre Científico: ${plantInfo.nombre_cientifico}
-    - Familia: ${plantInfo.familia}
-    
-    Genera la siguiente información en español y en un formato JSON válido. La respuesta debe ser SOLO el objeto JSON, sin explicaciones ni markdown. La estructura del JSON debe ser:
-    {
-      "resumenGeneral": "Un resumen general sobre la planta (origen, clima ideal, importancia).",
-      "presenciaNicaragua": "Describe la presencia de esta planta en Nicaragua.",
-      "plantasSimilares": [
-        {
-          "nombreComun": "Nombre común de la planta similar",
-          "nombreCientifico": "Nombre científico de la planta similar",
-          "descripcion": "Una breve descripción de la planta similar."
-        }
-      ]
-    }`;
-
-  const payload = { contents: [{ parts: [{ text: prompt }] }] };
-
-  const options = {
-    method: "post",
-    contentType: "application/json",
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true
+Usa la búsqueda para sustentar las afirmaciones. En presenciaNicaragua indica solamente presencia documentada, nombres locales, hábitat o regiones que tengan evidencia encontrada. Si la evidencia no es suficiente, dilo expresamente. No presentes usos medicinales, toxicidad, distribución ni especies similares como hechos sin respaldo.`;
+  const payload = {
+    contents: [{ parts: [{ text: prompt }] }],
+    tools: [{ google_search: {} }],
+    generationConfig: { responseMimeType: 'application/json', responseJsonSchema: plantMoreInfoSchema_() }
   };
+  const result = callGemini_(payload, 'búsqueda de información');
+  if (!result.success) return result;
 
+  const data = parseGeminiJson_(result.response);
+  if (!data) return { success: false, message: 'No fue posible procesar la información de la planta. Inténtalo nuevamente.' };
+  return { success: true, data: {
+    resumenGeneral: stringOrDefault_(data.resumenGeneral, 'No disponible.'),
+    presenciaNicaragua: stringOrDefault_(data.presenciaNicaragua, 'No se encontró evidencia suficiente sobre su presencia en Nicaragua.'),
+    plantasSimilares: sanitizeSimilarPlants_(data.plantasSimilares),
+    fuentes: extractGroundingSources_(result.response)
+  } };
+}
+
+function callGemini_(payload, operation) {
+  const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  if (!apiKey) {
+    Logger.log('Gemini ' + operation + ': falta la propiedad GEMINI_API_KEY.');
+    return { success: false, message: 'El servicio de inteligencia artificial no está configurado.' };
+  }
   try {
-    const response = UrlFetchApp.fetch(url, options);
-    const resultText = response.getContentText();
-    Logger.log("Respuesta de Gemini (Saber más): " + resultText);
-
-    return { success: true, text: resultText };
-
+    const response = UrlFetchApp.fetch(GEMINI_API_BASE_URL + GEMINI_MODEL + ':generateContent', {
+      method: 'post', contentType: 'application/json', payload: JSON.stringify(payload),
+      headers: { 'x-goog-api-key': apiKey }, muteHttpExceptions: true
+    });
+    const status = response.getResponseCode();
+    const body = response.getContentText();
+    if (status < 200 || status >= 300) return geminiHttpError_(status, body, operation);
+    let parsed;
+    try { parsed = JSON.parse(body); } catch (e) {
+      Logger.log('Gemini ' + operation + ': respuesta no JSON.');
+      return { success: false, message: 'El servicio devolvió una respuesta inválida. Inténtalo nuevamente.' };
+    }
+    return { success: true, response: parsed };
   } catch (e) {
-    Logger.log("Error en getMorePlantInfo: " + e.toString());
-    return { success: false, error: e.toString() };
+    Logger.log('Gemini ' + operation + ': ' + e);
+    return { success: false, message: 'No fue posible consultar la información de la planta en este momento. Inténtalo nuevamente.' };
   }
 }
+
+function geminiHttpError_(status, body, operation) {
+  let apiMessage = '';
+  try { apiMessage = JSON.parse(body).error.message || ''; } catch (e) { apiMessage = body.substring(0, 300); }
+  Logger.log('Gemini ' + operation + ' HTTP ' + status + ': ' + apiMessage);
+  if (status === 401 || status === 403) return { success: false, message: 'No fue posible autenticar el servicio de inteligencia artificial.' };
+  if (status === 404) return { success: false, message: 'El modelo de inteligencia artificial no está disponible en este momento.' };
+  if (status === 429) return { success: false, message: 'El servicio está ocupado por límite de uso. Inténtalo nuevamente más tarde.' };
+  return { success: false, message: 'No fue posible consultar la información de la planta en este momento. Inténtalo nuevamente.' };
+}
+
+function getGeminiImageInput_(input) {
+  const raw = typeof input === 'string' ? { base64: input } : (input || {});
+  let base64 = raw.base64 || raw.data || '';
+  let mimeType = raw.mimeType || raw.type || '';
+  const dataUrl = /^data:([^;,]+);base64,(.+)$/i.exec(base64);
+  if (dataUrl) { mimeType = mimeType || dataUrl[1]; base64 = dataUrl[2]; }
+  mimeType = String(mimeType).toLowerCase();
+  if (!/^image\/(jpeg|png|webp|gif)$/i.test(mimeType) || !/^[A-Za-z0-9+/=\s]+$/.test(base64)) {
+    return { success: false, message: 'La imagen no tiene un formato compatible. Usa JPEG, PNG, WEBP o GIF.' };
+  }
+  return { success: true, mimeType: mimeType, base64: base64.replace(/\s/g, '') };
+}
+
+function parseGeminiJson_(response) {
+  const candidates = response && response.candidates;
+  const parts = candidates && candidates[0] && candidates[0].content && candidates[0].content.parts;
+  const text = parts && parts.map(function(part) { return part && part.text || ''; }).join('');
+  if (!text) { Logger.log('Gemini: respuesta vacía o sin contenido utilizable.'); return null; }
+  try { return JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '').trim()); }
+  catch (e) { Logger.log('Gemini: JSON de modelo inválido.'); return null; }
+}
+
+function plantIdentificationSchema_() { return { type: 'object', properties: { identificado: { type: 'boolean' }, nombreComun: { type: 'string' }, nombreCientifico: { type: 'string' }, familia: { type: 'string' }, uso: { type: 'string' }, confidence: { type: 'number' } }, required: ['identificado'] }; }
+function plantMoreInfoSchema_() { return { type: 'object', properties: { resumenGeneral: { type: 'string' }, presenciaNicaragua: { type: 'string' }, plantasSimilares: { type: 'array', items: { type: 'object', properties: { nombreComun: { type: 'string' }, nombreCientifico: { type: 'string' }, descripcion: { type: 'string' } } } } } }; }
+function extractGroundingSources_(response) { const chunks = response && response.candidates && response.candidates[0] && response.candidates[0].groundingMetadata && response.candidates[0].groundingMetadata.groundingChunks || []; const seen = {}; return chunks.reduce(function(sources, chunk) { const web = chunk && chunk.web; if (web && /^https?:\/\//i.test(web.uri || '') && !seen[web.uri]) { seen[web.uri] = true; sources.push({ titulo: web.title || web.uri, url: web.uri }); } return sources; }, []); }
+function sanitizeSimilarPlants_(plants) { return Array.isArray(plants) ? plants.slice(0, 5).map(function(plant) { plant = plant || {}; return { nombreComun: stringOrDefault_(plant.nombreComun, 'Sin nombre común'), nombreCientifico: stringOrDefault_(plant.nombreCientifico, 'No disponible'), descripcion: stringOrDefault_(plant.descripcion, 'Sin descripción.') }; }) : []; }
+function isNonEmptyString_(value) { return typeof value === 'string' && value.trim().length > 0; }
+function stringOrDefault_(value, fallback) { return isNonEmptyString_(value) ? value.trim() : fallback; }
+function safePromptValue_(value) { return isNonEmptyString_(value) ? value.trim().substring(0, 300) : 'No disponible'; }
 
 
 //////////////////////////////////////////////////////////////////////////////

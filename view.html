@@ -1030,37 +1030,24 @@
 
     if(!geminiRequestActive) return;
 
-    if (response.success && response.text) {
-      try {
-        const resultJson = JSON.parse(response.text);
-        const content = resultJson.candidates[0].content.parts[0].text;
-        const cleanedJsonString = content.replace(/```json/g, "").replace(/```/g, "").trim();
-        const info = JSON.parse(cleanedJsonString);
-        
-        modalTitle.textContent = `Aqui tienes mas info sobre l@ ${plantData.nombre_comun}`;
-
-        let similaresHtml = '<p>No disponible.</p>';
-        if (info.plantasSimilares && Array.isArray(info.plantasSimilares)) {
-          similaresHtml = info.plantasSimilares.map(planta => 
-            `<p><strong>${planta.nombreComun || ''} (${planta.nombreCientifico || 'N/A'}):</strong> ${planta.descripcion || 'Sin descripción.'}</p>`
-          ).join('');
-        }
-
-        modalBody.innerHTML = `
-          <div id="gemini-more-info-display">
-            <h4>Resumen General</h4>
-            <p>${info.resumenGeneral || 'No disponible.'}</p>
-            <h4>Presencia en Nicaragua</h4>
-            <p>${info.presenciaNicaragua || 'No disponible.'}</p>
-            <h4>Plantas Similares</h4>
-            ${similaresHtml}
-          </div>
-        `;
-      } catch (e) {
-        onSaberMasFailure({ message: "La IA está cansada, déjala descansar, intenta mas tarde." });
-      }
-    } else {m
-      onSaberMasFailure({ message: response.error || "La IA dice: Estoy cansada jefe." });
+    if (response.success && response.data) {
+      const info = response.data;
+      modalTitle.textContent = `Aquí tienes más información sobre ${plantData.nombre_comun}`;
+      const similaresHtml = Array.isArray(info.plantasSimilares) && info.plantasSimilares.length
+        ? info.plantasSimilares.map(planta => `<p><strong>${escapeHtml(planta.nombreComun || '')} (${escapeHtml(planta.nombreCientifico || 'N/A')}):</strong> ${escapeHtml(planta.descripcion || 'Sin descripción.')}</p>`).join('')
+        : '<p>No disponible.</p>';
+      const fuentesHtml = Array.isArray(info.fuentes) && info.fuentes.length
+        ? `<ul>${info.fuentes.map(fuente => `<li><a href="${safeUrl(fuente.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(fuente.titulo || fuente.url)}</a></li>`).join('')}</ul>`
+        : '<p>No se devolvieron fuentes consultables.</p>';
+      modalBody.innerHTML = `
+        <div id="gemini-more-info-display">
+          <h4>Resumen General</h4><p>${escapeHtml(info.resumenGeneral || 'No disponible.')}</p>
+          <h4>Presencia en Nicaragua</h4><p>${escapeHtml(info.presenciaNicaragua || 'No se encontró evidencia suficiente.')}</p>
+          <h4>Plantas Similares</h4>${similaresHtml}
+          <h4>Fuentes consultadas</h4>${fuentesHtml}
+        </div>`;
+    } else {
+      onSaberMasFailure({ message: response.message || "No fue posible consultar la información de la planta." });
     }
   }
 
@@ -1069,12 +1056,25 @@
     if (!geminiRequestActive) return;
 
     modalTitle.textContent = "Inténtalo mas tarde";
-    modalBody.innerHTML = `<p>De momento no te podremos dar mas info, intenta mas tarde.<br><strong>Error:</strong> ${error.message}</p>`;
+    modalBody.innerHTML = `<p>${escapeHtml(error.message || 'De momento no podemos ofrecer más información. Inténtalo más tarde.')}</p>`;
   }
 
   function cerrarSaberMasModal() {
     geminiRequestActive = false;
     modal.classList.remove('active');
+  }
+
+  function escapeHtml(value) {
+    const div = document.createElement('div');
+    div.textContent = value == null ? '' : String(value);
+    return div.innerHTML;
+  }
+
+  function safeUrl(value) {
+    try {
+      const url = new URL(value);
+      return /^https?:$/.test(url.protocol) ? url.href : '#';
+    } catch (e) { return '#'; }
   }
 
   btnSaberMas.addEventListener('click', saberMas);
