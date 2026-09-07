@@ -1,0 +1,786 @@
+//CONFIGURACIÓN
+const SPREADSHEET_ID = '1TIKaqnmTsKKvNSHja2xxgv2Q87UB2Eh2l6DvTgMkUzE';
+const FOLDER_ID = '1LzHgraT5VU9uLWcp3RczHcYEPXs-2W0a';
+const PLANTS_DATA_SHEET_NAME = 'plantas';
+const APP_NAME = 'UNIVERSIDADES VERDES UCC';
+const DEFAULT_LOGO_ID = '1gahFroR2tOmSjlIzRy_qxXMbQdIpH79C';
+const API_KEY = "AIzaSyCf2ef_6L-CrK3Bnp_-3xPy842SbNoFajA";
+
+const HEADERS = {
+  ID: 'id_planta',
+  NOMBRE_COMUN: 'nombre_comun',
+  NOMBRE_CIENTIFICO: 'nombre_cientifico',
+  FAMILIA: 'familia',
+  UBICACION: 'ubicacion',
+  LATITUD: 'latitud',
+  LONGITUD: 'longitud',
+  USO: 'uso',
+  URLS_IMAGENES: 'urls_imagenes',
+  FECHA: 'fecha_registro',
+  REGISTRADO_POR: 'registrado_por',
+  COLABORADOR: 'colaborador',
+  URL_QR: 'url_qr'
+};
+
+//Rutas y vistas
+function doGet(e) {
+  const webAppUrl = ScriptApp.getService().getUrl();
+
+  if (e && e.parameter && e.parameter.logout === 'true') {
+    const template = HtmlService.createTemplateFromFile('login');
+    template.errorMessage = 'Has cerrado sesión exitosamente.';
+    const authUrl = `https://accounts.google.com/AccountChooser?continue=${encodeURIComponent(webAppUrl)}`;
+    template.loginUrl = authUrl;
+    return template.evaluate().setTitle(`Bienvenido a ${APP_NAME}`).addMetaTag('viewport', 'width=device-width, initial-scale=1.0')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
+  if (e && e.parameter && e.parameter.page == 'view') {
+    let template = HtmlService.createTemplateFromFile('view');
+    template.plantId = e.parameter.plantId || "";
+    return template.evaluate()
+      .setTitle(APP_NAME)
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1.0')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
+  const userAccess = checkUserAccess();
+
+  if (userAccess.isAllowed) {
+    const userEmail = Session.getActiveUser().getEmail();
+    const logoutUrl = `${webAppUrl}?logout=true`;
+    const changeAccountUrl = `https://accounts.google.com/AccountChooser?continue=${encodeURIComponent(webAppUrl)}`;
+
+    if (e && e.parameter && e.parameter.page == 'register') {
+      let template = HtmlService.createTemplateFromFile('register');
+      template.userEmail = userEmail;
+      template.dashboardUrl = webAppUrl;
+      template.logoutUrl = logoutUrl;
+      template.changeAccountUrl = changeAccountUrl;
+      return template.evaluate().setTitle(`Registrar Planta - ${APP_NAME}`).addMetaTag('viewport', 'width=device-width, initial-scale=1.0')
+        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    }
+
+    let template = HtmlService.createTemplateFromFile('dashboard');
+    template.userEmail = userEmail;
+    template.registerUrl = `${webAppUrl}?page=register`;
+    template.logoutUrl = logoutUrl;
+    template.changeAccountUrl = changeAccountUrl;
+    return template.evaluate().setTitle(`Dashboard - ${APP_NAME}`).addMetaTag('viewport', 'width=device-width, initial-scale=1.0')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
+  const template = HtmlService.createTemplateFromFile('login');
+
+  if (userAccess.reason === 'INVALID_DOMAIN') {
+    template.errorMessage = 'Acceso denegado. Tu correo no tiene acceso';
+  }
+
+  const authUrl = `https://accounts.google.com/AccountChooser?continue=${encodeURIComponent(webAppUrl)}`;
+  template.loginUrl = authUrl;
+
+  return template.evaluate().setTitle(`Bienvenido a ${APP_NAME}`).addMetaTag('viewport', 'width=device-width, initial-scale=1.0')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+//cerrar sesión
+function softLogout() {
+  const webAppUrl = ScriptApp.getService().getUrl();
+  CacheService.getUserCache().put('isLoggedIn', 'false', 21600);
+
+  return `${webAppUrl}?logout=true`;
+}
+
+//iniciar sesión
+function softLogin() {
+  CacheService.getUserCache().put('isLoggedIn', 'true', 21600);
+  return ScriptApp.getService().getUrl();
+}
+
+//verificar acceso
+function checkUserAccess() {
+  try {
+    const email = Session.getActiveUser().getEmail();
+    if (!email) {
+      return { isAllowed: false, reason: 'NO_SESSION' };
+    }
+
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const emailSheet = ss.getSheetByName('emails');
+    if (!emailSheet) {
+      return { isAllowed: false, reason: 'NO_EMAILS_SHEET' };
+    }
+
+    const data = emailSheet.getDataRange().getValues();
+    const headers = data.shift().map(h => String(h).trim().toLowerCase());
+    const adminIdx = headers.indexOf('correo_admin');
+    const collabIdx = headers.indexOf('colaborador');
+
+    if (adminIdx === -1 || collabIdx === -1) {
+      return { isAllowed: false, reason: 'INVALID_HEADERS' };
+    }
+
+    const target = email.trim().toLowerCase();
+
+    // si es admin
+    const isAdmin = data.some(r => String(r[adminIdx] || '').trim().toLowerCase() === target);
+
+    // si es colaborador
+    const matchRow = data.find(r => String(r[collabIdx] || '').trim().toLowerCase() === target);
+
+    if (!isAdmin && !matchRow) {
+      return { isAllowed: false, reason: 'NOT_IN_WHITELIST' };
+    }
+
+    Logger.log("Buscando correo: " + target);
+    Logger.log("Fila encontrada: " + JSON.stringify(matchRow));
+
+    const cache = CacheService.getUserCache();
+    cache.put('isLoggedIn', 'true', 21600);
+    cache.put('currentUser', target, 21600);
+    cache.put('isAdmin', isAdmin ? 'true' : 'false', 21600);
+
+    if (isAdmin) {
+      cache.put('currentAdmin', target, 21600); //admin
+      return { isAllowed: true, isAdmin: true, adminEmail: target };
+    } else {
+      const adminEmail = String(matchRow[adminIdx] || '').trim().toLowerCase();
+      cache.put('currentAdmin', adminEmail, 21600);
+      return { isAllowed: true, isAdmin: false, adminEmail: adminEmail, collaborator: target };
+    }
+
+  } catch (e) {
+    Logger.log("Error en checkUserAccess: " + e.message);
+    return { isAllowed: false, reason: 'ERROR', message: e.message };
+  }
+}
+
+//obtener tus plantas
+function getMyPlants() {
+  try {
+    const email = Session.getActiveUser().getEmail();
+    if (!email) {
+      return { success: false, error: "No se pudo identificar al usuario." };
+    }
+    return getPlantsForUser(email);
+  } catch (e) {
+    return { success: false, error: "No se pudo obtener la sesión del usuario." };
+  }
+}
+
+function getPlantsForUser(userEmail) {
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const plantSheet = ss.getSheetByName(PLANTS_DATA_SHEET_NAME);
+    if (!plantSheet) {
+      return { success: false, error: `La hoja "${PLANTS_DATA_SHEET_NAME}" no fue encontrada.` };
+    }
+
+    const targetEmail = userEmail.trim().toLowerCase();
+    const allData = plantSheet.getDataRange().getValues();
+
+    if (allData.length < 2) {
+      return { success: true, data: [] };
+    }
+
+    const headerRow = allData.shift();
+    const headers = headerRow.map(h => String(h || '').trim().toLowerCase());
+    const emailIdx = headers.indexOf('registrado_por');
+
+    if (emailIdx === -1) {
+      return { success: false, error: "No se encontró la columna 'registrado_por'." };
+    }
+
+    const userPlantRows = allData.filter(row => {
+      const sheetEmail = (row[emailIdx] || '').toString().trim().toLowerCase();
+      return sheetEmail === targetEmail;
+    });
+
+    const plantObjects = userPlantRows.map(row => {
+      try {
+        const plantObject = {};
+        headers.forEach((key, index) => {
+          const value = row[index];
+          if (key === 'urls_imagenes') {
+            try {
+              plantObject[key] = JSON.parse(value);
+            } catch (e) {
+              plantObject[key] = value ? [String(value)] : [];
+            }
+          } else if (key === 'fecha_registro') {
+            plantObject[key] = (value instanceof Date)
+              ? Utilities.formatDate(value, Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss")
+              : String(value);
+          } else {
+            plantObject[key] = value;
+          }
+        });
+
+        plantObject.thumbnailBase64 = null;
+        if (Array.isArray(plantObject.urls_imagenes) && plantObject.urls_imagenes.length > 0) {
+          const firstImageUrl = plantObject.urls_imagenes[0];
+          try {
+            const match = firstImageUrl.match(/[-\w]{25,}/);
+            if (match) {
+              const fileId = match[0];
+              const file = DriveApp.getFileById(fileId);
+              const blob = file.getBlob();
+              plantObject.thumbnailBase64 = null;
+            }
+          } catch (e) {
+            Logger.log(`No se pudo generar la miniatura para la imagen ${firstImageUrl}: ${e.message}`);
+          }
+        }
+
+        return plantObject;
+      } catch (e) {
+        Logger.log(`Error procesando la fila: [${row.join(', ')}]. Error: ${e.message}`);
+        return null;
+      }
+    }).filter(plant => plant !== null);
+
+    return { success: true, data: plantObjects.reverse() };
+
+  } catch (e) {
+    Logger.log(`ERROR GRAVE en getPlantsForUser: ${e.message} ${e.stack}`);
+    return { success: false, error: `Ocurrió un error en el servidor: ${e.message}` };
+  }
+}
+
+function getPlantThumbnail(plantId) {
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(PLANTS_DATA_SHEET_NAME);
+    const allData = sheet.getDataRange().getValues();
+    const headers = allData.shift().map(h => String(h).trim().toLowerCase());
+
+    const idIndex = headers.indexOf('id_planta');
+    const imgIndex = headers.indexOf('urls_imagenes');
+
+    const row = allData.find(r => String(r[idIndex]).trim() === String(plantId).trim());
+    if (!row) return null;
+
+    let urls = [];
+    try {
+      urls = JSON.parse(row[imgIndex]);
+    } catch (e) {
+      if (row[imgIndex]) urls = [row[imgIndex]];
+    }
+
+    if (urls.length === 0) return null;
+
+    const match = urls[0].match(/[-\w]{25,}/);
+    if (!match) return null;
+
+    const fileId = match[0];
+    const file = DriveApp.getFileById(fileId);
+    const blob = file.getBlob();
+    return `data:${blob.getContentType()};base64,${Utilities.base64Encode(blob.getBytes())}`;
+
+  } catch (e) {
+    Logger.log("Error en getPlantThumbnail: " + e.message);
+    return null;
+  }
+}
+
+function deletePlantLogically(plantId) {
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(PLANTS_DATA_SHEET_NAME);
+    const data = sheet.getDataRange().getValues();
+
+    if (data.length < 2) {
+      return { success: false, error: "No hay datos en la hoja." };
+    }
+
+    const headers = data.shift().map(h => String(h).trim().toLowerCase());
+    const idIndex = headers.indexOf('id_planta');
+    const emailIndex = headers.indexOf('registrado_por');
+
+    if (idIndex === -1 || emailIndex === -1) {
+      return { success: false, error: "Columnas necesarias no encontradas." };
+    }
+
+    // Buscar fila
+    const rowIdx = data.findIndex(r => String(r[idIndex]).trim() === String(plantId).trim());
+    if (rowIdx === -1) return { success: false, error: "Planta no encontrada." };
+
+    // No se borra físicamente
+    const originalEmail = data[rowIdx][emailIndex];
+    if (!originalEmail.toString().endsWith('_borrado')) {
+      sheet.getRange(rowIdx + 2, emailIndex + 1).setValue(originalEmail + '_borrado');
+    }
+
+    return { success: true };
+
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+}
+
+
+/****************************************************************
+ * LÓGICA DE PLANTAS Y ARCHIVOS
+ ****************************************************************/
+function getOrCreateFolder(parentFolder, folderName) {
+  const folders = parentFolder.getFoldersByName(folderName);
+  return folders.hasNext() ? folders.next() : parentFolder.createFolder(folderName);
+}
+
+function generatePlantId(name) {
+  if (!name) return '';
+  let id = name.toLowerCase();
+  id = id.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  id = id.replace(/[^a-z0-9]+/g, "_");
+  id = id.replace(/^_+|_+$/g, "");
+  id += "_" + new Date().getTime();
+  return id;
+}
+
+function registerPlantData(formObject) {
+  try {
+    const cache = CacheService.getUserCache();
+    const userEmail = cache.get('currentUser');   // quien registró
+    const adminEmail = cache.get('currentAdmin'); // dueño real
+
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const plantSheet = ss.getSheetByName(PLANTS_DATA_SHEET_NAME);
+    const plantName = formObject.nombre_cientifico;
+
+    const plantId = generatePlantId(plantName);
+
+    let ubicacionTexto = formObject.ubicacion?.trim();
+    let lat = formObject.latitud?.trim() || '';
+    let lon = formObject.longitud?.trim() || '';
+
+    if (!ubicacionTexto) {
+
+      if (lat && lon) {
+        ubicacionTexto = `Coordenadas: ${lat}, ${lon}`;
+      } else {
+        ubicacionTexto = '';
+        lat = '';
+        lon = '';
+      }
+    }
+
+    const newRow = [
+      plantId,
+      formObject.nombre_comun,
+      plantName,
+      formObject.familia,
+      ubicacionTexto,
+      lat,
+      lon,
+      formObject.uso,
+      "[]",
+      new Date(),
+      adminEmail,
+      userEmail,
+      ""
+    ];
+
+    plantSheet.appendRow(newRow);
+
+    const plantViewUrl = `${ScriptApp.getService().getUrl()}?page=view&plantId=${plantId}`;
+    return { success: true, plantId: plantId, plantViewUrl: plantViewUrl };
+
+  } catch (error) {
+    Logger.log(error);
+    return { success: false, message: 'Error al registrar datos: ' + error.toString() };
+  }
+}
+
+function getDefaultLogoBase64() {
+  try {
+    if (!DEFAULT_LOGO_ID) return { success: false, error: "ID del logo no definido." };
+    const file = DriveApp.getFileById(DEFAULT_LOGO_ID);
+    const blob = file.getBlob();
+    const base64 = `data:${blob.getContentType()};base64,${Utilities.base64Encode(blob.getBytes())}`;
+    return { success: true, base64: base64 };
+  } catch (e) {
+    Logger.log("Error al obtener logo: " + e.message);
+    return { success: false, error: e.message };
+  }
+}
+
+function savePlantFiles(plantId, qrBase64, imagesData) {
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const plantSheet = ss.getSheetByName(PLANTS_DATA_SHEET_NAME);
+    const data = plantSheet.getDataRange().getValues();
+    const headers = data.shift();
+    const idColIdx = headers.indexOf(HEADERS.ID);
+
+    const rowIdx = data.findIndex(row => row[idColIdx] == plantId);
+    if (rowIdx === -1) throw new Error("No se encontró la planta con ID: " + plantId);
+
+    const plantRow = data[rowIdx];
+    const userEmail = plantRow[headers.indexOf(HEADERS.REGISTRADO_POR)];
+    const plantName = plantRow[headers.indexOf(HEADERS.NOMBRE_CIENTIFICO)];
+    const comunPlantName = plantRow[headers.indexOf(HEADERS.NOMBRE_COMUN)];
+
+    const rootFolder = DriveApp.getFolderById(FOLDER_ID);
+    const userFolder = getOrCreateFolder(rootFolder, userEmail);
+    const plantFolder = getOrCreateFolder(userFolder, plantName);
+
+    // Guardar imágenes
+    let imageURLs = [];
+    imagesData.forEach(fileData => {
+      const blob = Utilities.newBlob(Utilities.base64Decode(fileData.base64), fileData.mimeType, fileData.name);
+      const newFile = plantFolder.createFile(blob).setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      imageURLs.push(`https://drive.google.com/uc?export=view&id=${newFile.getId()}`);
+    });
+
+    // Guardar QR
+    const qrParts = qrBase64.split(';base64,');
+    const qrMimeType = qrParts[0].split(':')[1];
+    const qrBlob = Utilities.newBlob(Utilities.base64Decode(qrParts[1]), qrMimeType, `qr_${plantId}.png`);
+    const qrFile = plantFolder.createFile(qrBlob).setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+    // Actualizar hoja de cálculo
+    const sheetRowIndex = rowIdx + 2;
+    plantSheet.getRange(sheetRowIndex, headers.indexOf(HEADERS.URL_QR) + 1).setValue(qrFile.getUrl());
+    plantSheet.getRange(sheetRowIndex, headers.indexOf(HEADERS.URLS_IMAGENES) + 1).setValue(JSON.stringify(imageURLs));
+
+    // Enviar correo
+    MailApp.sendEmail({
+      to: userEmail,
+      subject: `Código QR para la planta: ${comunPlantName}`,
+      htmlBody: `Hola,<br><br>Se ha generado un nuevo código QR para tu planta <b>${comunPlantName}</b>.<br><br>Saludos.`,
+      attachments: [qrBlob]
+    });
+
+    return { success: true };
+  } catch (error) {
+    Logger.log(error);
+    return { success: false, message: 'Error al guardar archivos: ' + error.toString() };
+  }
+}
+
+function identificarPlanta(imageBase64) {
+  const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + API_KEY;
+
+  const payload = {
+    contents: [{
+      parts: [
+        { text: "Identifica la planta en la imagen. Responde ÚNICAMENTE con un JSON válido, sin explicaciones ni markdown, con las claves: \"nombreComun\", \"nombreCientifico\", \"familia\", \"uso\"." },
+        { inline_data: { mime_type: "image/jpeg", data: imageBase64 } }
+      ]
+    }]
+  };
+
+  const options = {
+    method: "post",
+    contentType: "application/json",
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+
+  try {
+    const response = UrlFetchApp.fetch(url, options);
+    const resultText = response.getContentText();
+    Logger.log("Respuesta de Gemini: " + resultText);
+
+    const resultJson = JSON.parse(resultText);
+    const content = resultJson.candidates[0].content.parts[0].text;
+
+    const cleanedJsonString = content.replace(/```json/g, "").replace(/```/g, "").trim();
+    const parsedData = JSON.parse(cleanedJsonString);
+
+    return { success: true, data: parsedData };
+
+  } catch (e) {
+    Logger.log("Error al contactar con la API de Gemini: " + e.toString());
+    return { success: false, error: e.toString() };
+  }
+}
+
+function getMorePlantInfo(plantInfo) {
+  const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + API_KEY;
+
+  const prompt = `Basado en la siguiente planta:
+    - Nombre Común: ${plantInfo.nombre_comun}
+    - Nombre Científico: ${plantInfo.nombre_cientifico}
+    - Familia: ${plantInfo.familia}
+    
+    Genera la siguiente información en español y en un formato JSON válido. La respuesta debe ser SOLO el objeto JSON, sin explicaciones ni markdown. La estructura del JSON debe ser:
+    {
+      "resumenGeneral": "Un resumen general sobre la planta (origen, clima ideal, importancia).",
+      "presenciaNicaragua": "Describe la presencia de esta planta en Nicaragua.",
+      "plantasSimilares": [
+        {
+          "nombreComun": "Nombre común de la planta similar",
+          "nombreCientifico": "Nombre científico de la planta similar",
+          "descripcion": "Una breve descripción de la planta similar."
+        }
+      ]
+    }`;
+
+  const payload = { contents: [{ parts: [{ text: prompt }] }] };
+
+  const options = {
+    method: "post",
+    contentType: "application/json",
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+
+  try {
+    const response = UrlFetchApp.fetch(url, options);
+    const resultText = response.getContentText();
+    Logger.log("Respuesta de Gemini (Saber más): " + resultText);
+
+    return { success: true, text: resultText };
+
+  } catch (e) {
+    Logger.log("Error en getMorePlantInfo: " + e.toString());
+    return { success: false, error: e.toString() };
+  }
+}
+
+
+//////////////////////////////////////////////////////////////////////////////
+
+function getPlantInfoById(plantId) {
+
+  if (!plantId) {
+    return { success: false, error: 'No se proporcionó un ID de planta.' };
+  }
+
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(PLANTS_DATA_SHEET_NAME);
+    if (!sheet) {
+      return { success: false, error: 'La hoja de datos no fue encontrada.' };
+    }
+
+    const allData = sheet.getDataRange().getValues();
+    if (allData.length < 2) {
+      return { success: false, error: 'No hay datos en la hoja.' };
+    }
+
+    const headers = allData.shift().map(h => String(h || '').trim().toLowerCase());
+    const idColumnIndex = headers.indexOf('id_planta');
+
+    if (idColumnIndex === -1) {
+      return { success: false, error: "No se encontró la columna 'id_planta'." };
+    }
+
+    const targetId = String(plantId).trim();
+    const plantRow = allData.find(row => String(row[idColumnIndex] || '').trim() === targetId);
+
+    if (!plantRow) {
+      return null;
+    }
+
+    const plantObject = {};
+    headers.forEach((key, index) => {
+      const value = plantRow[index];
+      if (key === 'urls_imagenes') {
+        try {
+          plantObject[key] = JSON.parse(value);
+        } catch (e) {
+          plantObject[key] = value ? [String(value)] : [];
+        }
+      } else if (key === 'fecha_registro') {
+        plantObject[key] = (value instanceof Date)
+          ? Utilities.formatDate(value, Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss")
+          : String(value);
+      } else {
+        plantObject[key] = value;
+      }
+    });
+
+    return plantObject;
+
+  } catch (e) {
+    Logger.log("ERROR GRAVE en getPlantInfoById: " + e.message);
+    return { success: false, error: `Error del servidor: ${e.message}` };
+  }
+}
+
+function incrementPlantViewCount(plantId) {
+  try {
+    if (!plantId) {
+      throw new Error("No se proporcionó un ID de planta.");
+    }
+
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(PLANTS_DATA_SHEET_NAME);
+    if (!sheet) throw new Error("La hoja de datos no fue encontrada.");
+
+    const data = sheet.getDataRange().getValues();
+    const headers = data.shift().map(h => String(h).trim().toLowerCase());
+    const idIndex = headers.indexOf('id_planta');
+    const visitsIndex = headers.indexOf('visitas');
+
+    if (idIndex === -1 || visitsIndex === -1) {
+      throw new Error("No se encontraron las columnas 'id_planta' o 'visitas'.");
+    }
+
+    // Encontrar la fila de la planta
+    const rowIndex = data.findIndex(row => String(row[idIndex]).trim() === String(plantId).trim());
+
+    if (rowIndex !== -1) {
+      const sheetRow = rowIndex + 2; // +1 porque data no tiene headers, +1 porque las filas de la hoja empiezan en 1
+      const currentVisits = Number(sheet.getRange(sheetRow, visitsIndex + 1).getValue()) || 1;
+      sheet.getRange(sheetRow, visitsIndex + 1).setValue(currentVisits + 1);
+
+      return { success: true, newCount: currentVisits + 1 };
+    } else {
+      throw new Error("No se encontró la planta con el ID especificado.");
+    }
+  } catch (e) {
+    Logger.log("Error en incrementPlantViewCount: " + e.message);
+    return { success: false, error: e.message };
+  }
+}
+
+function addLikeToPlant(plantId) {
+  try {
+    if (!plantId) throw new Error("No se proporcionó un ID de planta.");
+
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(PLANTS_DATA_SHEET_NAME);
+    if (!sheet) throw new Error("La hoja de datos no fue encontrada.");
+
+    const data = sheet.getDataRange().getValues();
+    const headers = data.shift().map(h => String(h).trim().toLowerCase());
+    const idIndex = headers.indexOf('id_planta');
+    const likesIndex = headers.indexOf('likes');
+
+    if (idIndex === -1 || likesIndex === -1) {
+      throw new Error("Asegúrate de tener las columnas 'id_planta' y 'likes' en tu hoja.");
+    }
+
+    const rowIndex = data.findIndex(row => String(row[idIndex]).trim() === String(plantId).trim());
+
+    if (rowIndex !== -1) {
+      const sheetRow = rowIndex + 2;
+      const range = sheet.getRange(sheetRow, likesIndex + 1);
+      const currentLikes = Number(range.getValue()) || 0;
+      range.setValue(currentLikes + 1);
+
+      return { success: true, newCount: currentLikes + 1 };
+    } else {
+      throw new Error("No se encontró la planta con el ID especificado.");
+    }
+  } catch (e) {
+    Logger.log("Error en addLikeToPlant: " + e.message);
+    return { success: false, error: e.message };
+  }
+}
+
+function submitSuggestion(userEmail, plantId, suggestion) {
+  const plantInfo = getPlantInfoById(plantId);
+  if (!plantInfo) return;
+
+  const ownerEmail = plantInfo.registrado_por;
+  if (!ownerEmail) return;
+
+  const imageUrl = (plantInfo.urls_imagenes && plantInfo.urls_imagenes.length > 0) ? plantInfo.urls_imagenes[0] : '';
+
+  const subject = `Nuevo comentario para la planta: ${plantInfo.nombre_comun}`;
+  const body = `
+    Hola,<br><br>
+    Se ha recibido un nuevo comentario sobre tu planta <b>${plantInfo.nombre_comun}</b>.<br><br>
+    <b>Comentario de:</b> ${userEmail || 'Correo no especificado'}<br>
+    <b>Planta:</b> ${plantInfo.nombre_comun} (${plantInfo.nombre_cientifico})<br>
+    <b>Texto del comentario:</b><br>
+    <p style="padding: 10px; border-left: 3px solid #ccc; font-style: italic;">${suggestion}</p>
+    <br>
+    <img src="${imageUrl}" style="max-width: 150px;" alt="Foto de la planta">
+    <br><br>
+    Atentamente,<br>
+    El equipo de UNIVERSIDADES VERDES UCC.
+  `;
+
+  MailApp.sendEmail(ownerEmail, subject, "", { htmlBody: body });
+
+  const userSubject = `Hemos recibido tu sugerencia`;
+  const userBody = `
+    Hola ${userEmail},<br><br>
+    Gracias por tu contribución. Hemos recibido tu sugerencia sobre la planta <b>${plantInfo.nombre_comun}</b>.<br><br>
+    <img src="${imageUrl}" style="max-width: 150px;" alt="Foto de la planta">
+    <br><br>
+    Atentamente,<br>
+    El equipo de UNIVERSIDADES VERDES UCC.
+  `;
+  MailApp.sendEmail(userEmail, userSubject, "", { htmlBody: userBody });
+}
+
+function getPlantImagesBase64(plantId) {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName(PLANTS_DATA_SHEET_NAME);
+  if (!sheet) return [];
+
+  const allData = sheet.getDataRange().getValues();
+  const headers = allData.shift().map(h => String(h || '').trim().toLowerCase());
+  const idIndex = headers.indexOf('id_planta');
+  const imagesIndex = headers.indexOf('urls_imagenes');
+
+  if (idIndex === -1 || imagesIndex === -1) return [];
+
+  const row = allData.find(r => String(r[idIndex]).trim() === String(plantId).trim());
+  if (!row) return [];
+
+  let urls = [];
+  try {
+    urls = JSON.parse(row[imagesIndex]);
+  } catch (e) {
+    if (row[imagesIndex]) urls = [row[imagesIndex]];
+  }
+
+  const imagesBase64 = urls.map(url => {
+    try {
+      const match = url.match(/[-\w]{25,}/); // extrae fileId del link
+      if (!match) return null;
+      const fileId = match[0];
+      const file = DriveApp.getFileById(fileId);
+      const blob = file.getBlob();
+      return `data:${blob.getContentType()};base64,${Utilities.base64Encode(blob.getBytes())}`;
+    } catch (e) {
+      return null;
+    }
+  }).filter(x => x);
+
+  return imagesBase64;
+}
+
+function sendPlantInfoToUser(userEmail, plantId) {
+  const plantInfo = getPlantInfoById(plantId);
+  if (!plantInfo) return;
+
+  const imageUrl = (plantInfo.urls_imagenes && plantInfo.urls_imagenes.length > 0) ? plantInfo.urls_imagenes[0] : '';
+
+  const subject = `Información de la planta: ${plantInfo.nombre_comun}`;
+  const body = `
+    Hola,<br><br>
+    Gracias por tu interés en nuestras plantas. Aquí tienes la información que solicitaste:<br><br>
+    <hr>
+    <img src="${imageUrl}" style="max-width: 250px; border-radius: 8px;" alt="Foto de la planta"><br>
+    <h3>${plantInfo.nombre_comun}</h3>
+    <p><b>Nombre Científico:</b> ${plantInfo.nombre_cientifico}</p>
+    <p><b>Familia:</b> ${plantInfo.familia}</p>
+    <p><b>Ubicación en el Campus:</b> ${plantInfo.ubicacion}</p>
+    <p><b>Uso Principal:</b> ${plantInfo.uso}</p>
+    <hr>
+    <br>
+    Atentamente,<br>
+    El equipo de UNIVERSIDADES VERDES UCC.
+  `;
+
+  MailApp.sendEmail(userEmail, subject, "", { htmlBody: body });
+}
+
+function getAdminEmails() {
+  try {
+    if (!adminSheet) return [];
+    const data = adminSheet.getDataRange().getValues();
+    return data.map(row => row[0]).filter(email => email && email.includes('@'));
+  } catch (e) {
+    Logger.log("Error al obtener emails de admin: " + e.toString());
+    return [];
+  }
+}

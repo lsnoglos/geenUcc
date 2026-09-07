@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+
+  <title>Información de la Planta</title>
+  <style>
+    :root {
+      --text-color: #333;
+      --light-gray: #f0f4f0;
+      --shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+      --input-border: #dfe1e6;
+      --input-focus: #4c9aff;
+      --font-family: 'Poppins', sans-serif;
+
+      --primary-color: #3a503e;
+      --secondary-color: #bee8a6;
+      --accent-color: #fcfff5;
+      --background-color: #e3e3e3;
+      --neutro: white;
+      --white: linear-gradient(135deg, #ffffff 0%, #3b6532 100%);
+      --card-gradient: linear-gradient(135deg, #c5fffc 0%, #caffba 100%);
+      --gemini-button: linear-gradient(135deg, #3a503e 0%, #87c562 100%);
+      --color-button: linear-gradient(45deg, #20582b, #576b4c);
+      --like-button: linear-gradient(135deg, #fbe3f8 0%, #e3fbe6 100%);
+    }
+
+    body {
+      font-family: var(--font-family);
+      background-color: var(--neutro);
+      margin: 0;
+      color: var(--text-color);
+    }
+
+    .header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      padding: 15px 25px;
+      background: var(--white);
+      border-bottom: 1px solid #eee;
+    }
+
+    #header-logo {
+      height: 50px;
+    }
+
+    .header-title {
+      font-size: 1.2rem;
+      font-weight: bold;
+      color: var(--neutro);
+    }
+
+    .page-content {
+      padding: 0px;
+    }
+
+    .card {
+      max-width: 700px;
+      margin: 0 auto;
+      background: var(--neutro);
+      border-radius: 0px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .loader-container {
+      text-align: center;
+      padding: 50px;
+      font-size: 1.2rem;
+    }
+
+    .gallery {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 10;
+      background-color: #283e06;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+
+      background-size: cover;
+      transition: background-image 0.4s ease-in-out;
+    }
+
+    .gallery::before {
+      content: '';
+      position: absolute;
+      top: -5%;
+      left: -5%;
+      width: 110%;
+      height: 110%;
+      background: inherit;
+      background-size: cover;
+      filter: blur(10px) brightness(1);
+      z-index: 1;
+    }
+
+    .gallery-track {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      height: 100%;
+      transition: transform 0.4s ease-in-out;
+    }
+
+    .gallery-btn,
+    .gallery-dots {
+      z-index: 3;
+    }
+
+    .gallery-slide {
+      flex: 0 0 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2;
+    }
+
+    .gallery img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      display: block;
+      user-select: none;
+    }
+
+    .gallery-btn {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 20;
+      /* Aumentamos el z-index para que estén sobre las imágenes */
+      background: rgba(0, 0, 0, 0.4);
+      color: white;
+      border: none;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s, opacity 0.3s;
+      opacity: 0;
+    }
+
+    .gallery:hover .gallery-btn {
+      opacity: 1;
+    }
+
+    .gallery-btn:hover {
+      background: rgba(0, 0, 0, 0.7);
+    }
+
+    .gallery-btn.prev {
+      left: 15px;
+    }
+
+    .gallery-btn.next {
+      right: 15px;
+    }
+
+    .gallery-dots {
+      position: absolute;
+      bottom: 15px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 20;
+    }
+
+    .dot {
+      height: 10px;
+      width: 10px;
+      margin: 0 5px;
+      background-color: rgba(255, 255, 255, 0.5);
+      border-radius: 50%;
+      display: inline-block;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
+    .dot.active {
+      background-color: var(--white);
+    }
+
+    .card-content {
+      padding: 20px;
+      background: var(--accent-color);
+    }
+
+    #plantName {
+      font-size: 33px;
+      font-weight: bold;
+      color: var(--primary-color);
+      margin: 0 0 5px 0;
+    }
+
+    #plantScientificName {
+      font-size: 15px;
+      color: #6c757d;
+      margin: 0 0 25px 0;
+      font-weight: italic;
+    }
+
+    #plantFamily {
+      font-size: 15px;
+      color: #6c757d;
+      margin: 0 0 25px 0;
+      font-weight: italic;
+    }
+
+    .info-section {
+      margin-bottom: 25px;
+    }
+
+    .info-section b {
+      font-size: 1rem;
+      color: var(--primary-color);
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    .info-section p {
+      margin: 0;
+      line-height: 1.6;
+    }
+
+    #location-text {
+      font-family: var(--font-family);
+      background-color: var(--neutro);
+      padding: 10px 15px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      color: #333;
+    }
+
+    .btn-back {
+      display: inline-block;
+      padding: 8px 16px;
+      background-color: var(--light-gray);
+      color: var(--text-color);
+      text-decoration: none;
+      border-radius: 20px;
+      font-weight: bold;
+      transition: background-color 0.2s, color 0.2s;
+    }
+
+    .btn-back:hover {
+      background-color: var(--secondary-color);
+      color: var(--white);
+    }
+
+    #comment-section {
+      margin-top: 0px;
+      padding: 20px;
+      border-radius: 0px;
+      background: #ffffff;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    }
+
+    #comment-section h3 {
+      margin-bottom: 15px;
+      font-size: 1.2rem;
+      color: #333;
+    }
+
+    #comment-section input,
+    #comment-section textarea {
+      width: 100%;
+      padding: 10px 0px 10px 10px;
+      margin-bottom: 15px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      font-size: 0.95rem;
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+
+    #comment-section input:focus,
+    #comment-section textarea:focus {
+      outline: none;
+      border-color: #3498db;
+      box-shadow: 0 0 6px rgba(52, 152, 219, 0.3);
+    }
+
+    #sendCommentBtn {
+      width: 100%;
+      padding: 12px;
+      background: var(--color-button);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.3s, transform 0.2s;
+    }
+
+    #sendCommentBtn:hover {
+      background: var(--primary-color);
+      transform: translateY(-2px);
+    }
+
+    #commentMsg {
+      margin-top: 10px;
+      font-size: 0.9rem;
+    }
+
+    .gemini-button-section {
+      text-align: right;
+      padding: 0px 0px 0px 0px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      /* Espaciado para el botón */
+    }
+
+    .btn-gemini {
+      background: var(--gemini-button);
+      color: white;
+      font-weight: 600;
+      padding: 6px 12px;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    }
+
+    .btn-gemini:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    .modal-overlay {
+      display: flex;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.6);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+
+    .modal-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal-content {
+      background: white;
+      border-radius: 16px;
+      max-width: 500px;
+      width: 90%;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+      display: flex;
+      /* Permite organizar el contenido interno */
+      flex-direction: column;
+      text-align: center;
+      /* Apila el título, cuerpo y botones verticalmente */
+      max-height: 85vh;
+      /* El modal nunca será más alto que el 85% de la pantalla */
+      transform: scale(0.95);
+      transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .modal-content {
+      transform: scale(1);
+      opacity: 1;
+    }
+
+    .modal-content h3 {
+      font-size: 1.5rem;
+      color: var(--primary-color);
+      margin-top: 0;
+      padding: 20px;
+      text-align: center;
+    }
+
+    #gemini-result-display {
+      text-align: center;
+      background: #f9f9f9;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 20px 0;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 15px;
+      margin-top: 20px;
+      text-align: center;
+    }
+
+    .modal-btn {
+      flex-grow: 1;
+      padding: 15px;
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .btn-accept {
+      background-color: var(--secondary-color);
+      color: white;
+    }
+
+    .btn-accept:hover {
+      background-color: #b86600;
+    }
+
+    .btn-cancel {
+      background-color: #e0e0e0;
+      color: #333;
+    }
+
+    .btn-cancel:hover {
+      background-color: #bdbdbd;
+    }
+
+    .modal-btn:disabled {
+      background-color: #ccc;
+      color: #888;
+      cursor: not-allowed;
+      box-shadow: none;
+      transform: none;
+    }
+
+    .modal-btn:disabled:hover {
+      background-color: #ccc;
+    }
+
+    .btn-close-modal {
+      background: var(--color-button);
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      margin: 10px;
+    }
+
+    .plant-loader {
+      display: block;
+      /* Asegura que ocupe su propia línea */
+      width: 200px;
+      height: 200px;
+      margin: 15px auto;
+      /* Centra el GIF horizontalmente */
+      background-image: url('https://usagif.com/wp-content/uploads/butterfly-animation-80.gif');
+      background-size: contain;
+      background-repeat: no-repeat;
+      background-position: center;
+    }
+
+    #gemini-modal-body {
+      padding: 0 20px;
+      flex-grow: 1;
+      overflow-y: auto;
+      text-align: justify-content;
+    }
+
+    #gemini-more-info-display {
+      background: #f9f9f9;
+      padding: 15px;
+      border-radius: 8px;
+      text-align: left;
+    }
+
+    #gemini-more-info-display h4 {
+      margin: 15px 0 5px 0;
+      color: var(--primary-color);
+      text-align: center;
+    }
+
+    #gemini-more-info-display h4:first-child {
+      margin-top: 0;
+    }
+
+    #gemini-more-info-display p {
+      margin: 0;
+      text-align: justify-content;
+    }
+
+    #gallery-loader {
+      color: white;
+      font-size: 14px;
+      text-align: center;
+      z-index: 4;
+      position: absolute;
+      /* Asegura que se centre bien */
+    }
+
+    .plant-loader-inline {
+      display: block;
+      width: 200px;
+      height: 200px;
+      margin: 0 auto 10px auto;
+      /* Centra el GIF */
+      background-image: url('https://usagif.com/wp-content/uploads/butterfly-animation-80.gif');
+      background-size: contain;
+      background-repeat: no-repeat;
+      background-position: center;
+    }
+
+    .plant-loader-fullscreen {
+      display: block;
+      width: 200px;
+      height: 200px;
+      margin: 0 auto 15px auto;
+      background-image: url('https://usagif.com/wp-content/uploads/butterfly-animation-80.gif');
+      background-size: contain;
+      background-repeat: no-repeat;
+      background-position: center;
+    }
+
+    .btn-like {
+      padding: 6px 12px;
+      border: 1px solid #f8bbd0;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: all 0.3s ease;
+      margin-left: 10px;
+    }
+
+    .btn-like:hover {
+      background: #f8bbd0;
+    }
+
+    .btn-like.liked {
+      /* Estilo cuando ya se le dio like */
+      background: var(--like-button);
+      color: black;
+      //cursor: not-allowed;
+    }
+
+    .like-container {
+      position: relative;
+    }
+
+    .particle {
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      font-size: 24px;
+      opacity: 0;
+      animation: float-up 1.5s ease-out forwards;
+      pointer-events: none;
+    }
+
+    @keyframes float-up {
+      0% {
+        opacity: 1;
+        transform: translateY(0) translateX(-50%) scale(1);
+      }
+
+      100% {
+        opacity: 0;
+        transform: translateY(-150px) translateX(-50%) scale(0.5);
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="header">
+    <img id="header-logo" src="" alt="Logo UCC">
+    <span class="header-title">Universidades Verdes, UCC</span>
+  </div>
+
+  <div class="page-content">
+
+    <div class="loader-container" id="loader">
+      <div class="plant-loader-fullscreen"></div>
+      <p>Cargando información de la planta...</p>
+    </div>
+
+    <div id="plantCard" class="card" style="display:none;">
+      <div id="image-gallery" class="gallery">
+        <div id="gallery-loader">
+          <div class="plant-loader-inline"></div>
+          <p>Cargando imágenes...</p>
+        </div>
+      </div>
+
+      <div class="card-content">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+          <h1 id="plantName"></h1>
+          <div id="view-counter" style="text-align: right; flex-shrink: 0; padding-left: 15px;">
+            <span style="font-size: 24px; font-weight: 600; color: var(--primary-color);">...</span>
+            <p style="font-size: 12px; color: #6c757d; margin: 0;">Visitas</p>
+          </div>
+        </div>
+        <h2 id="plantScientificName"></h2>
+
+        <div class="info-section">
+          <b>Familia</b>
+          <p id="plantFamily"></p>
+        </div>
+
+        <div class="info-section">
+          <b>Uso Principal</b>
+          <p id="plantUse"></p>
+        </div>
+
+        <div class="info-section">
+          <b>Ubicación Registrada</b>
+          <p id="location-text"></p>
+        </div>
+
+        <div class="gemini-button-section">
+          <button id="btnSaberMas" class="btn-gemini">✨ Quiero saber mas...</button>
+          <div class="like-container">
+            <button id="btnLike" class="btn-like">❤️ Me Gusta</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="comment-section">
+      <h3>Deja un comentario o sugerencia</h3>
+      <form id="commentForm">
+        <input type="email" id="studentEmail" placeholder="Tu correo electrónico" required>
+        <textarea id="commentText" placeholder="Escribe tu comentario aquí..." required></textarea>
+        <button type="submit" id="sendCommentBtn">Enviar Comentario</button>
+      </form>
+      <div id="commentMsg"></div>
+    </div>
+
+  </div>
+  </div>
+
+  <div id="gemini-modal" class="modal-overlay">
+    <div class="modal-content">
+      <h3 id="gemini-modal-title">Obteniendo Información Adicional</h3>
+      <div id="gemini-modal-body">
+      </div>
+      <div class="modal-actions">
+        <button id="btnCerrarModal" class="btn-close-modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Variables globales para la galería
+    let plantData;
+    let currentIndex = 0;
+    let images = [];
+
+    function getBrowserFingerprint() {
+      const navigator = window.navigator;
+      const screen = window.screen;
+      let fingerprint = navigator.userAgent + '|';
+      fingerprint += screen.height + '|' + screen.width + '|' + screen.colorDepth + '|';
+      fingerprint += navigator.language + '|' + new Date().getTimezoneOffset();
+
+      // Simple hash function para convertir el string en un número
+      let hash = 0;
+      for (let i = 0; i < fingerprint.length; i++) {
+        const char = fingerprint.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash |= 0; // Convert to 32bit integer
+      }
+      return 'fp_' + hash;
+    }
+        
+    window.addEventListener('load', () => {
+
+      google.script.run
+        .withSuccessHandler(function(logoResult) {
+          if (logoResult.success) {
+            document.getElementById('header-logo').src = logoResult.base64;
+          }
+        })
+      .getDefaultLogoBase64();
+
+      const plantId = "<?= plantId ?>";
+      
+      if (plantId) {
+
+        const browserId = getBrowserFingerprint();
+        const uniqueVisitorId = `${browserId}_${plantId}`;
+
+        try {
+          const visitedPlants = JSON.parse(localStorage.getItem('visitedPlants')) || {};
+
+          if (!visitedPlants[uniqueVisitorId]) {
+            console.log(`Primera visita a ${uniqueVisitorId}. Contando...`);
+
+            google.script.run.incrementPlantViewCount(plantId);
+            
+            visitedPlants[uniqueVisitorId] = true;
+            localStorage.setItem('visitedPlants', JSON.stringify(visitedPlants));
+          }
+        } catch (e) {
+          console.error("No se pudo usar localStorage:", e);
+        }
+
+        google.script.run
+          .withSuccessHandler(displayPlantInfo)
+          .withFailureHandler(showError)
+          .getPlantInfoById(plantId);
+      } else {
+        showError({ message: 'No se especificó un ID de planta.' });
+      }
+    });
+
+    function displayPlantInfo(plant) {
+      document.getElementById('loader').style.display = 'none';
+      if (!plant) {
+        showError({ message: 'No se encontró la planta.' });
+        return;
+      }
+      plantData = plant;
+
+      document.getElementById('plantName').textContent = plant.nombre_comun || "Sin nombre común";
+      document.getElementById('plantScientificName').textContent = plant.nombre_cientifico || "No disponible";
+      document.getElementById('plantFamily').textContent = plant.familia || "No disponible";
+      document.getElementById('plantUse').textContent = plant.uso || "No especificado";
+
+      const viewCounter = document.getElementById('view-counter').querySelector('span');
+      viewCounter.textContent = plant.visitas || '1';
+
+      let locationString = '';
+      if (plant.ubicacion) locationString += plant.ubicacion;
+      if (plant.latitud && plant.longitud) {
+        if (locationString) locationString += '<br>';
+        locationString += `Coordenadas: ${plant.latitud}, ${plant.longitud}`;
+      }
+      document.getElementById('location-text').innerHTML = locationString || 'Ubicación no registrada.';
+
+      document.getElementById('plantCard').style.display = 'block';
+      const galleryLoader = document.getElementById('gallery-loader');
+      galleryLoader.style.display = 'block';
+
+      google.script.run
+        .withSuccessHandler(setupGallery)
+        .withFailureHandler(showError)
+        .getPlantImagesBase64(plant.id_planta);
+
+      setupLikeButton();
+    }
+
+    function setupLikeButton() {
+      const btnLike = document.getElementById('btnLike');
+      const likeContainer = document.querySelector('.like-container');
+      const plantId = plantData.id_planta;
+
+      const browserId = getBrowserFingerprint();
+      const uniqueLikerId = `${browserId}_${plantId}`;
+
+      try {
+        const likedPlants = JSON.parse(localStorage.getItem('likedPlants')) || {};
+        if (likedPlants[uniqueLikerId]) {
+          btnLike.classList.add('liked');
+        }
+      } catch(e) { console.error("Error al leer likedPlants:", e); }
+
+      btnLike.addEventListener('click', () => {
+        createLikeParticles(likeContainer);
+        
+        btnLike.classList.add('liked');
+
+        try {
+          const likedPlants = JSON.parse(localStorage.getItem('likedPlants')) || {};
+          if (!likedPlants[uniqueLikerId]) {
+            console.log(`Primer like a ${uniqueLikerId}. Contando...`);
+            
+            google.script.run.addLikeToPlant(plantId);
+
+            likedPlants[uniqueLikerId] = true;
+            localStorage.setItem('likedPlants', JSON.stringify(likedPlants));
+          }
+        } catch(e) { console.error("Error al procesar el like:", e); }
+      });
+    }
+
+    function createLikeParticles(container) {
+      const particles = ['❤️', '💚', '🌿'];
+      for (let i = 0; i < 5; i++) {
+        const particle = document.createElement('span');
+        particle.classList.add('particle');
+        particle.textContent = particles[Math.floor(Math.random() * particles.length)];
+        particle.style.left = `${Math.random() * 100}%`;
+        particle.style.fontSize = `${14 + Math.random() * 16}px`;
+        particle.style.animationDelay = `${Math.random() * 0.2}s`;
+        container.appendChild(particle);
+        setTimeout(() => particle.remove(), 1500);
+      }
+    }
+
+    // Función para construir la galería una vez que llegan las imágenes
+    function setupGallery(base64Images) {
+      const gallery = document.getElementById('image-gallery');
+      gallery.innerHTML = ''; // Limpiar la galería
+      images = base64Images;
+
+      if (!images || images.length === 0) {
+        gallery.innerHTML = '<p style="color: white;">No hay imágenes disponibles.</p>';
+        return;
+      }
+
+      gallery.innerHTML = '';
+
+      // Crear los elementos de la galería
+      const track = document.createElement('div');
+      track.className = 'gallery-track';
+      
+      const dotsContainer = document.createElement('div');
+      dotsContainer.className = 'gallery-dots';
+
+      const galleryLoader = document.getElementById('gallery-loader');
+      
+      images.forEach((src, i) => {
+        const slide = document.createElement('div');
+        slide.className = 'gallery-slide';
+
+        const img = document.createElement('img');
+        img.style.display = 'none';
+        img.src = src;
+
+        img.onload = () => {
+          img.style.display = 'block';
+          // **Eliminar loader de la galería apenas la primera imagen cargue**
+          if (i === 0 && galleryLoader) {
+            galleryLoader.remove();
+          }
+        };
+
+        img.onerror = () => {
+          slide.textContent = '❌ No se pudo cargar la imagen.';
+          if (i === 0 && galleryLoader) {
+            galleryLoader.remove();
+          }
+        };
+
+        slide.appendChild(img);
+        track.appendChild(slide);
+
+        const dot = document.createElement('span');
+        dot.className = 'dot';
+        dot.addEventListener('click', () => showImage(i));
+        dotsContainer.appendChild(dot);
+      });
+
+      const prevBtn = document.createElement('button');
+      prevBtn.className = 'gallery-btn prev';
+      prevBtn.innerHTML = '❮';
+      prevBtn.addEventListener('click', prevImage);
+
+      const nextBtn = document.createElement('button');
+      nextBtn.className = 'gallery-btn next';
+      nextBtn.innerHTML = '❯';
+      nextBtn.addEventListener('click', nextImage);
+
+      gallery.appendChild(track);
+      gallery.appendChild(dotsContainer);
+      gallery.appendChild(prevBtn);
+      gallery.appendChild(nextBtn);
+
+      showImage(0);
+      setupSwipe();
+    }
+    
+    function nextImage() {
+      const newIndex = (currentIndex + 1) % images.length;
+      showImage(newIndex);
+    }
+
+    function prevImage() {
+      const newIndex = (currentIndex - 1 + images.length) % images.length;
+      showImage(newIndex);
+    }
+
+    function showImage(index) {
+      const track = document.querySelector('.gallery-track');
+      const dots = document.querySelectorAll('.dot');
+      const gallery = document.getElementById('image-gallery');
+      if (!track) return;
+      
+      gallery.style.backgroundImage = `url('${images[index]}')`;
+      
+      track.style.transform = `translateX(-${index * 100}%)`;
+      dots.forEach((dot, i) => {
+        dot.classList.toggle('active', i === index);
+      });
+      currentIndex = index;
+    }
+
+    function setupSwipe() {
+      const track = document.querySelector('.gallery-track');
+      let isDragging = false, startPos = 0, currentTranslate = 0, prevTranslate = 0;
+      
+      track.addEventListener('mousedown', start);
+      track.addEventListener('touchstart', start);
+      
+      track.addEventListener('mousemove', move);
+      track.addEventListener('touchmove', move);
+
+      track.addEventListener('mouseup', end);
+      track.addEventListener('mouseleave', end);
+      track.addEventListener('touchend', end);
+
+      function start(event) {
+        isDragging = true;
+        startPos = getPositionX(event);
+        track.style.transition = 'none'; // Desactivar la animación mientras se arrastra
+      }
+
+      function move(event) {
+        if (isDragging) {
+          const currentPosition = getPositionX(event);
+          currentTranslate = prevTranslate + currentPosition - startPos;
+          track.style.transform = `translateX(${currentTranslate}px)`;
+        }
+      }
+
+      function end(event) {
+        if (!isDragging) return;
+        isDragging = false;
+        const movedBy = currentTranslate - prevTranslate;
+
+        if (movedBy < -50 && currentIndex < images.length - 1) currentIndex++;
+        if (movedBy > 50 && currentIndex > 0) currentIndex--;
+        
+        showImage(currentIndex);
+        track.style.transition = 'transform 0.4s ease-in-out'; // Reactivar animación
+        prevTranslate = -currentIndex * track.offsetWidth; // Actualizar posición
+      }
+
+      function getPositionX(event) {
+        return event.type.includes('mouse') ? event.pageX : event.touches[0].clientX;
+      }
+    }
+
+    function showError(error) {
+      const loader = document.getElementById('loader');
+      loader.innerHTML = `<strong>Error al cargar:</strong><br><small>${error.message}</small>`;
+      loader.style.color = 'red';
+    }
+
+  document.getElementById('commentForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    const emailInput = document.getElementById('studentEmail');
+    const commentInput = document.getElementById('commentText');
+    const sendBtn = document.getElementById('sendCommentBtn');
+    const msgDiv = document.getElementById('commentMsg');
+    
+    const email = emailInput.value.trim();
+    const suggestion = commentInput.value.trim();
+
+    if (!email || !suggestion) {
+      msgDiv.textContent = "Por favor, completa todos los campos.";
+      msgDiv.style.color = 'red';
+      return;
+    }
+    
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Enviando...';
+    msgDiv.textContent = "";
+
+    google.script.run
+      .withSuccessHandler(() => {
+        msgDiv.textContent = "¡Gracias! Tu comentario ha sido enviado con éxito.";
+        msgDiv.style.color = 'green';
+        emailInput.value = '';
+        commentInput.value = '';
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Enviar Comentario';
+      })
+      .withFailureHandler((err) => {
+        msgDiv.textContent = `Error al enviar: ${err.message}`;
+        msgDiv.style.color = 'red';
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Enviar Comentario';
+      })
+      .submitSuggestion(email, plantData.id_planta, suggestion);
+  });
+
+ const btnSaberMas = document.getElementById('btnSaberMas');
+  const modal = document.getElementById('gemini-modal');
+  const modalTitle = document.getElementById('gemini-modal-title');
+  const modalBody = document.getElementById('gemini-modal-body');
+  const btnCerrarModal = document.getElementById('btnCerrarModal');
+
+  let geminiRequestActive = false;
+  let retryCount = 0;
+  const maxRetries = 1;
+
+  function saberMas() {
+    geminiRequestActive = true;
+    retryCount = 0;
+    modalTitle.textContent = `Te estoy buscando mas info sobre l@ ${plantData.nombre_comun}`;
+    
+    modalBody.innerHTML = `<div class="plant-loader"></div><p>La IA está buscando <strong>${plantData.nombre_comun}</strong>...</p>`;
+    
+    modal.classList.add('active');
+    document.body.classList.add('modal-open');
+
+    google.script.run
+      .withSuccessHandler(onSaberMasSuccess)
+      .withFailureHandler(onSaberMasFailure)
+      .getMorePlantInfo(plantData);
+  }
+
+  function onSaberMasSuccess(response) {
+
+    if(!geminiRequestActive) return;
+
+    if (response.success && response.text) {
+      try {
+        const resultJson = JSON.parse(response.text);
+        const content = resultJson.candidates[0].content.parts[0].text;
+        const cleanedJsonString = content.replace(/```json/g, "").replace(/```/g, "").trim();
+        const info = JSON.parse(cleanedJsonString);
+        
+        modalTitle.textContent = `Aqui tienes mas info sobre l@ ${plantData.nombre_comun}`;
+
+        let similaresHtml = '<p>No disponible.</p>';
+        if (info.plantasSimilares && Array.isArray(info.plantasSimilares)) {
+          similaresHtml = info.plantasSimilares.map(planta => 
+            `<p><strong>${planta.nombreComun || ''} (${planta.nombreCientifico || 'N/A'}):</strong> ${planta.descripcion || 'Sin descripción.'}</p>`
+          ).join('');
+        }
+
+        modalBody.innerHTML = `
+          <div id="gemini-more-info-display">
+            <h4>Resumen General</h4>
+            <p>${info.resumenGeneral || 'No disponible.'}</p>
+            <h4>Presencia en Nicaragua</h4>
+            <p>${info.presenciaNicaragua || 'No disponible.'}</p>
+            <h4>Plantas Similares</h4>
+            ${similaresHtml}
+          </div>
+        `;
+      } catch (e) {
+        onSaberMasFailure({ message: "La IA está cansada, déjala descansar, intenta mas tarde." });
+      }
+    } else {m
+      onSaberMasFailure({ message: response.error || "La IA dice: Estoy cansada jefe." });
+    }
+  }
+
+
+  function onSaberMasFailure(error) {
+    if (!geminiRequestActive) return;
+
+    modalTitle.textContent = "Inténtalo mas tarde";
+    modalBody.innerHTML = `<p>De momento no te podremos dar mas info, intenta mas tarde.<br><strong>Error:</strong> ${error.message}</p>`;
+  }
+
+  function cerrarSaberMasModal() {
+    geminiRequestActive = false;
+    modal.classList.remove('active');
+  }
+
+  btnSaberMas.addEventListener('click', saberMas);
+  btnCerrarModal.addEventListener('click', cerrarSaberMasModal);
+
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      cerrarSaberMasModal();
+    }
+  }); 
+
+  </script>
+</body>
+
+</html>

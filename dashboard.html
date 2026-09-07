@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary-color: #3a503e;
+      /* Verde oscuro principal */
+      --secondary-color: #bee8a6;
+      /* Verde medio */
+      --accent-color: #f8ffe8;
+      /* Verde claro para acentos */
+      --background-color: #e3e3e3;
+      /* Fondo crema muy claro */
+      --neutro: white;
+      --white: linear-gradient(135deg, #ffffff 0%, #3b6532 100%);
+      --card-background: #FFFFFF;
+      --text-color: #333;
+      --subtle-text: #555;
+      --shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      --font-family: 'Poppins', sans-serif;
+
+
+      --card-gradient: linear-gradient(135deg, #ffffff 0%, #e5ffdd 100%);
+      --primary-gradient: linear-gradient(45deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+
+    }
+
+    body {
+      font-family: var(--font-family);
+      background-color: var(--neutro);
+      margin: 0;
+      color: var(--text-color);
+    }
+
+    .container {
+      max-width: 650px;
+      margin: 0 auto;
+      background: var(--neutro);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+    }
+
+    .header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 10px;
+      background: var(--white);
+      border-bottom: 1px solid #eee;
+    }
+
+    #header-logo {
+      height: 50px;
+    }
+
+    #page-title {
+      color: var(--primary-color);
+      margin: 0 0 0 15px;
+    }
+
+    .header-title {
+      font-size: 1.2rem;
+      font-weight: bold;
+      color: var(--primary-color);
+    }
+
+    .header2 {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 15px;
+      /* Espacio entre el logo y el texto */
+      padding: 15px 25px;
+      background-color: var(--white);
+      border-bottom: 1px solid #eee;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+    }
+
+    #logoutBtn {
+      color: var(--accent-color);
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 0.9rem;
+    }
+
+    .content-wrapper {
+      padding: 5px 20px 20px 20px;
+    }
+
+    .user-info {
+      font-size: 13px;
+      color: var(--secondary-color);
+      text-align: right;
+    }
+
+    .user-info .user-email {
+      font-weight: bold;
+      color: var(--secondary-color);
+    }
+
+    .user-info a {
+      font-size: 12px;
+      color: var(--accent-color);
+      text-decoration: none;
+      margin-left: 10px;
+    }
+
+    .header-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 10px;
+    }
+
+    .header-main {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      flex-grow: 1;
+    }
+
+    .header-main h1 {
+      font-size: 1rem;
+      color: var(--primary-color);
+      margin: 0;
+    }
+
+    h1 {
+      color: #003876;
+      margin-left: 10px;
+      font-size: 20px;
+    }
+
+    .btn-new {
+      background-color: #d67800;
+      color: white;
+      padding: 12px 20px;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: bold;
+    }
+
+    #plant-list {
+      list-style: none;
+      padding: 0;
+      display: grid;
+      gap: 10px;
+      /* Espacio entre las tarjetas */
+    }
+
+    .plant-item {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      background: var(--card-gradient);
+      border-radius: 4px;
+      padding: 12px;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--secondary-color);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .plant-item:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.12);
+    }
+
+    .plant-item img {
+      width: 60px;
+      height: 60px;
+      object-fit: cover;
+      border-radius: 6px;
+      /* Bordes ligeramente redondeados */
+      flex-shrink: 0;
+    }
+
+    .plant-info {
+      flex-grow: 1;
+      min-width: 0;
+    }
+
+    .plant-info h3 {
+      margin: 0 0 4px 0;
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--primary-color);
+      width: 200px;
+      white-space: nowrap;     /* Evita que el texto salte a la siguiente línea */
+      overflow: hidden;        /* Oculta el texto que se desborda */
+      text-overflow: ellipsis; /* Muestra "..." al final */
+    }
+
+    .plant-info p {
+      margin: 0;
+      font-size: 0.9rem;
+      color: var(--subtle-text);
+      font-style: italic;
+      width: 200px;
+      white-space: nowrap;     /* Evita que el texto salte a la siguiente línea */
+      overflow: hidden;        /* Oculta el texto que se desborda */
+      text-overflow: ellipsis; /* Muestra "..." al final */
+    }
+
+    .plant-actions {
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .action-btn {
+      color: var(--secondary-color);
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 0.9rem;
+    }
+
+    .action-btn:hover {
+      color: var(--secondary-color);
+    }
+
+    .action-btn i {
+      font-size: 16px;
+    }
+
+    .btn-view {
+      color: var(--primary-color);
+    }
+
+    .btn-edit {
+      color: #007bff;
+    }
+
+    .btn-delete {
+      color: var(--primary-color);
+    }
+
+    .fab {
+      position: fixed;
+      bottom: 30px;
+      right: 30px;
+      width: 60px;
+      height: 60px;
+      background-color: var(--primary-color);
+      color: var(--neutro);
+      border-radius: 50%;
+      border: none;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+      font-size: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      transition: transform 0.2s, background-color 0.2s;
+    }
+
+    .fab:hover {
+      background-color: var(--secondary-color);
+      transform: scale(1.05);
+    }
+
+    #loader,
+    #empty-message {
+      text-align: center;
+      font-size: 1.2rem;
+      color: var(--primary-color);
+      padding: 50px;
+    }
+
+    .plant-loader-fullscreen {
+      display: block;
+      width: 200px;  /* Tamaño más grande para la carga principal */
+      height: 200px;
+      margin: 0 auto 15px auto; /* Centra el GIF */
+      background-image: url('https://usagif.com/wp-content/uploads/butterfly-animation-80.gif');
+      background-size: contain;
+      background-repeat: no-repeat;
+      background-position: center;
+    }
+
+    .plant-stats {
+      display: flex;
+      gap: 15px; /* Espacio entre "Vistas" y "Likes" */
+      margin-top: 5px;
+      font-size: 13px;
+      color: var(--subtle-text);
+    }
+
+    .plant-stats i {
+      margin-right: 5px; /* Espacio entre el ícono y el número */
+    }
+
+    .fa-heart {
+      color: #e91e63; /* Un color rojo/rosado para el corazón */
+    }
+
+    .fa-eyes {
+      color: #0d47a1; /* Un color azul oscuro para el texto de los likes */
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="container">
+
+  <div class="header2">
+    <img id="header-logo" src="" alt="Logo UCC">
+    <span class="header-title">Universidades Verdes, UCC</span>
+  </div>
+
+  <div class="header">
+    <div class="header-main">
+      <h1 id="page-title">Mi Jardín</h1>
+    </div>
+    <div class="user-info">
+      👤 <span class="user-email"><?= userEmail ?></span>
+      <br>
+      <a href="<?= changeAccountUrl ?>">Cambiar de cuenta</a>
+      <a id="logoutBtn" href="#">Cerrar Sesión</a>
+    </div>
+  </div>
+
+  <div class="content-wrapper">
+    <div id="loader">
+      <div class="plant-loader-fullscreen"></div>
+      <p>Buscando tus plantas...</p>
+    </div>
+    <ul id="plant-list"></ul>
+    <div id="empty-message" style="display:none;">
+      <p>Aún no has registrado ninguna planta.<br>¡Haz clic en el botón '+' para empezar!</p>
+    </div>
+  </div>
+
+  <a href="<?= registerUrl ?>" class="fab" title="Registrar Nueva Planta">+</a>
+
+  </div>
+
+  <script>
+    window.addEventListener('load', function() {
+
+      google.script.run
+        .withSuccessHandler(function(logoResult) {
+          if (logoResult.success) {
+            document.getElementById('header-logo').src = logoResult.base64;
+        }
+    })
+  .getDefaultLogoBase64();
+  
+  google.script.run
+      .withSuccessHandler(displayPlants)
+      .withFailureHandler(showError)
+      .getMyPlants();
+  });
+
+  function displayPlants(response) {
+    document.getElementById('loader').style.display = 'none';
+    
+    if (!response.success) {
+      showError({ message: `El servidor devolvió un error: ${response.error}` });
+      return;
+    }
+
+    const plants = response.data;
+    const plantList = document.getElementById('plant-list');
+    
+    if (!plants || plants.length === 0) {
+      document.getElementById('empty-message').style.display = 'block';
+      return;
+    }
+    
+  let html = '';
+  const webAppUrl = "<?= ScriptApp.getService().getUrl() ?>";
+  const placeholderUrl = 'https://placehold.co/60x60/e0e0e0/777?text=?';
+
+  plants.forEach((plant, index) => {
+    
+        const detailUrl = `${webAppUrl}?page=view&plantId=${plant.id_planta}&from=dashboard`;
+        const visitas = plant.visitas || 0;
+        const likes = plant.likes || 0;
+        
+        html += `
+          <li class="plant-item" data-id="${plant.id_planta}">
+            <img id="thumb-${index}" src="${placeholderUrl}" alt="${plant.nombre_comun || 'Planta'}">
+            <div class="plant-info">
+              <h3>${plant.nombre_comun || 'Sin nombre común'}</h3>
+              <p>${plant.nombre_cientifico || 'N/A'}</p>
+
+              <div class="plant-stats">
+                <span><i class="fas fa-eyes fa-eye"></i> ${visitas} ${visitas === 1 ? 'visita' : 'visitas'}</span>
+                <span><i class="fas fa-heart"></i> ${likes} ${likes === 1 ? 'like' : 'likes'}</span>
+              </div>
+
+            </div>
+            <div class="plant-actions">
+              <a href="${detailUrl}" target="_blank" class="btn-view action-btn" title="Ver Detalle">
+                <i class="fas fa-eye"></i>
+              </a>
+              <a class="btn-delete action-btn" title="Eliminar">
+                <i class="fas fa-trash"></i>
+              </a>
+            </div>
+          </li>`;
+      });
+
+      plantList.innerHTML = html;
+
+      plants.forEach((plant, index) => {
+        if (plant.urls_imagenes && plant.urls_imagenes.length > 0) {
+          google.script.run
+            .withSuccessHandler(function (base64) {
+              if (base64) {
+                document.getElementById(`thumb-${index}`).src = base64;
+              }
+            })
+            .getPlantThumbnail(plant.id_planta);
+        }
+  });
+
+  plants.forEach((plant, index) => {
+    const deleteBtn = document.querySelector(`.plant-item[data-id="${plant.id_planta}"] .btn-delete`);
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', function() {
+        if (confirm(`¿Seguro que deseas eliminar la planta "${plant.nombre_comun || plant.nombre_cientifico}"? Esta acción se puede revertir.`)) {
+          google.script.run
+            .withSuccessHandler(function(res) {
+              if (res.success) {
+                alert('Planta eliminada correctamente.');
+                // Recarga la lista
+                google.script.run.withSuccessHandler(displayPlants).getMyPlants();
+              } else {
+                alert('No se pudo eliminar la planta: ' + res.error);
+              }
+            })
+            .withFailureHandler(function(err) {
+              alert('Error al eliminar: ' + err.message);
+            })
+            .deletePlantLogically(plant.id_planta);
+        }
+      });
+    }
+  });
+
+  }
+
+  function showError(error) {
+    console.error('Error:', error);
+    const loader = document.getElementById('loader');
+    loader.style.color = 'red';
+    loader.innerHTML = `<strong>Error al cargar las plantas.</strong><br><small>${error.message || 'Inténtalo de nuevo.'}</small>`;
+  }
+
+  document.getElementById('logoutBtn').addEventListener('click', function(event) {
+    event.preventDefault(); // Previene la navegación del enlace
+    this.disabled = true;
+    this.textContent = 'Cerrando...';
+    
+    google.script.run
+      .withSuccessHandler(onLogoutSuccess)
+      .softLogout();
+  });
+
+  function onLogoutSuccess(redirectUrl) {
+    window.top.location.href = redirectUrl;
+  }
+  </script>
+</body>
+
+</html>

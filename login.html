@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+  <style>
+   
+   :root {
+      --font-family: 'Poppins', sans-serif;
+    }
+
+    body {
+      font-family: var(--font-family);
+      background-color: #f0f4f0;
+      color: #3d550c;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      text-align: center;
+    }
+
+    .container {
+      background-color: #ffffff;
+      padding: 40px;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+      max-width: 400px;
+      width: 90%;
+    }
+
+    .logo {
+      max-width: 200px;
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      color: #003876;
+      margin-bottom: 25px;
+    }
+
+    p {
+      color: #555;
+      margin-bottom: 30px;
+    }
+
+    .button {
+      background-color: #d67800;
+      color: white;
+      padding: 15px 25px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+      text-decoration: none;
+      display: inline-block;
+    }
+
+    .button:hover {
+      background-color: #b86600;
+    }
+
+    .guest-info {
+      margin-top: 30px;
+      font-size: 14px;
+      color: #666;
+    }
+
+    .error-message {
+      background-color: #ffebee;
+      /* Un rojo claro */
+      color: #c62828;
+      /* Un rojo oscuro */
+      border: 1px solid #c62828;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 20px 0;
+      text-align: center;
+      font-weight: bold;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <img src="https://logosnicas.com/wp-content/uploads/2022/08/universidad_de_ciencias_comerciales_ucc.png" alt="Logo UCC" class="logo">
+    <h1>UNIVERSIDADES VERDES UCC</h1>
+    <p>Para registrar plantas, por favor inicia sesión con tu cuenta.</p>
+
+    <? if (typeof errorMessage !== 'undefined' && errorMessage) { ?>
+      <p class="error-message"><?= errorMessage ?></p>
+    <? } ?>
+
+    <a href="<?= loginUrl ?>" class="button">Iniciar Sesión con Google</a>
+
+    <div class="guest-info">
+      <p>Si eres un visitante, puedes ver la información de cada planta escaneando su código QR.</p>
+    </div>
+  </div>
+</body>
+
+</html>

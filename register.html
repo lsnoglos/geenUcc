@@ -1,0 +1,1184 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Registrar Planta</title>
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js">
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --text-color: #333;
+      --light-gray: #f0f4f0;
+      --shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+      --input-border: #dfe1e6;
+      --input-focus: #4c9aff;
+      --font-family: 'Poppins', sans-serif;
+
+      --primary-color: #3a503e;
+      --secondary-color: #bee8a6;
+      --accent-color: #f8ffe8;
+      --background-color: #e3e3e3;
+      --neutro: white;
+      --white: linear-gradient(135deg, #ffffff 0%, #3b6532 100%);
+      --card-gradient: linear-gradient(135deg, #c5fffc 0%, #caffba 100%);
+      --gemini-button: linear-gradient(135deg, #3a503e 0%, #87c562 100%);
+      --color-button: linear-gradient(45deg, #20582b, #576b4c);
+    }
+
+    body {
+      font-family: var(--font-family);
+      background-color: var(--background-color);
+      margin: 0;
+      color: var(--text-color);
+    }
+
+    .container {
+      max-width: 650px;
+      margin: 0 auto;
+      background: var(--neutro);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+    }
+
+    .header {
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--input-border);
+      display: flex;
+      flex-wrap: wrap;
+
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+
+      background: var(--white);
+    }
+
+    .header2 {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 15px;
+
+      padding: 15px 25px;
+      background-color: var(--white);
+      border-bottom: 1px solid #eee;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+    }
+
+    #header-logo2 {
+      height: 50px;
+    }
+
+    .header-title {
+      font-size: 1.1rem;
+      font-weight: bold;
+      color: var(--primary-color);
+    }
+
+    #page-title {
+      color: var(--primary-color);
+      margin: 0 0 0 15px;
+    }
+
+    .header-main {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-grow: 1;
+    }
+
+    .header-main h1 {
+      font-size: 1rem;
+      color: var(--primary-color);
+      margin: 0;
+    }
+
+    .btn-back {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      border-radius: 100%;
+
+      background-color: var(--light-gray);
+      color: var(--text-color);
+      font-size: 20px;
+
+      font-weight: bold;
+      text-decoration: none;
+      transition: background-color 0.2s, color 0.2s;
+      flex-shrink: 0;
+    }
+
+    .btn-back:hover {
+      background-color: var(--secondary-color);
+      color: var(--white);
+    }
+
+    .user-info .user-email {
+      font-weight: bold;
+      color: var(--primary-color);
+    }
+
+    .user-info a {
+      font-size: 12px;
+      color: var(--secondary-color);
+      text-decoration: none;
+      margin-left: 10px;
+    }
+
+
+    .user-info {
+      font-size: 13px;
+      color: var(--secondary-color);
+      text-align: right;
+    }
+
+    .user-info .user-email {
+      font-weight: bold;
+      color: var(--secondary-color);
+    }
+
+    .user-info a {
+      font-size: 12px;
+      color: var(--accent-color);
+      text-decoration: none;
+      margin-left: 10px;
+    }
+
+    @media (min-width: 600px) {
+      .header {
+        flex-wrap: nowrap;
+      }
+
+      .user-info {
+        order: 3;
+      }
+    }
+
+    form {
+      padding: 30px;
+    }
+
+    .form-section {
+      margin-bottom: 25px;
+    }
+
+    .form-section label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 8px;
+      font-size: 1rem;
+    }
+
+    input[type="text"],
+    textarea {
+      width: 100%;
+      padding: 12px 15px;
+      border: 1px solid var(--input-border);
+      border-radius: 8px;
+      box-sizing: border-box;
+      font-size: 1rem;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    input[type="text"]:focus,
+    textarea:focus {
+      outline: none;
+      border-color: var(--input-focus);
+      box-shadow: 0 0 0 3px rgba(76, 154, 255, 0.25);
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    .photo-uploader {
+      background-color: #fafbfc;
+      border: 2px dashed var(--input-border);
+      border-radius: 8px;
+      padding: 10px;
+      text-align: center;
+    }
+
+    .photo-buttons {
+      display: flex;
+      gap: 15px;
+      justify-content: center;
+    }
+
+    .photo-buttons label.btn-photo {
+      background: var(--color-button);
+      color: white;
+      padding: 10px 20px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background-color 0.2s;
+    }
+
+    .photo-buttons label.btn-photo:hover {
+      background-color: #004223;
+    }
+
+    #photo-input,
+    #camera-input {
+      display: none;
+    }
+
+    #thumbnails {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 10px;
+      justify-content: center;
+    }
+
+    .thumbnail-item {
+      position: relative;
+    }
+
+    .thumbnail-item img {
+      width: 80px;
+      height: 80px;
+      object-fit: cover;
+      border-radius: 8px;
+      border: 2px solid var(--white);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .thumbnail-item .delete-btn {
+      position: absolute;
+      top: -8px;
+      right: -8px;
+      background: #e53e3e;
+      color: white;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      border: 2px solid var(--white);
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+
+    .location-group {
+      background-color: #fafbfc;
+      border: 1px solid var(--input-border);
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    #location-status {
+      font-style: italic;
+      color: #555;
+      margin-bottom: 15px;
+      padding: 10px;
+      background-color: #e9ecef;
+      border-radius: 6px;
+    }
+
+    #submitBtn {
+      width: 100%;
+      background: var(--gemini-button);
+      color: white;
+      padding: 15px;
+      border: none;
+      border-radius: 8px;
+      font-size: 1.2rem;
+      cursor: pointer;
+      font-weight: bold;
+      transition: background-color 0.2s;
+    }
+
+    #submitBtn:hover {
+      background-color: #b86600;
+    }
+
+    #submitBtn:disabled {
+      background: var(--light-gray);
+      cursor: not-allowed;
+    }
+
+    #status {
+      margin-top: 20px;
+      text-align: center;
+    }
+
+    .success-container {
+      text-align: center;
+      padding: 20px;
+    }
+
+    .success-container h3 {
+      font-size: 1.5rem;
+      color: var(--primary-color);
+    }
+
+    .success-container p {
+      color: #555;
+    }
+
+    .btn-success {
+      background-color: var(--primary-color);
+      display: inline-block;
+      text-decoration: none;
+      color: white;
+      padding: 12px 25px;
+      border-radius: 8px;
+      font-weight: bold;
+      margin-top: 10px;
+    }
+
+    .fab {
+      position: fixed;
+      bottom: 30px;
+      right: 30px;
+      width: 60px;
+      height: 60px;
+      background-color: var(--primary-color);
+
+      color: white;
+      border-radius: 50%;
+      border: none;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+      font-size: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      cursor: pointer;
+      transition: transform 0.2s, background-color 0.2s;
+      z-index: 999;
+    }
+
+    .fab:hover {
+      background-color: var(--secondary-color);
+      transform: scale(1.05);
+    }
+
+    //gemini
+
+    .gemini-section {
+      background: var(--card-gradient);
+      border: 1px solid #c8e6c9;
+      border-radius: 12px;
+      padding: 10px;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    .gemini-section p {
+      margin: 0 0 10px 0;
+      color: var(--primary-color);
+    }
+
+    .btn-gemini {
+      background: var(--gemini-button);
+      color: white;
+      font-weight: 600;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 25px;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 15px rgba(76, 175, 80, 0.4);
+    }
+
+    .btn-gemini:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(76, 175, 80, 0.5);
+    }
+
+    .btn-gemini:disabled {
+      background: #ccc;
+      box-shadow: none;
+      cursor: not-allowed;
+    }
+
+    .modal-overlay {
+      display: flex;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.6);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+
+    .modal-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal-content {
+      background: white;
+      padding: 30px;
+      border-radius: 16px;
+      max-width: 450px;
+      width: 90%;
+      text-align: center;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+      transform: scale(0.9);
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .modal-content {
+      transform: scale(1);
+      opacity: 1;
+    }
+
+    .modal-content h3 {
+      font-size: 1.5rem;
+      color: var(--primary-color);
+      margin-top: 0;
+    }
+
+    #gemini-result-display {
+      text-align: left;
+      background: #f9f9f9;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 20px 0;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 15px;
+      margin-top: 20px;
+    }
+
+    .modal-btn {
+      flex-grow: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .btn-accept {
+      background: var(--color-button);
+      color: white;
+    }
+
+    .btn-accept:hover {
+      background-color: #b86600;
+    }
+
+    .btn-cancel {
+      background-color: #e0e0e0;
+      color: #333;
+    }
+
+    .btn-cancel:hover {
+      background-color: #bdbdbd;
+    }
+
+    .modal-btn:disabled {
+      background-color: #ccc;
+      color: #888;
+      cursor: not-allowed;
+      box-shadow: none;
+      transform: none;
+    }
+
+    .modal-btn:disabled:hover {
+      background-color: #ccc;
+    }
+
+    .loading-overlay {
+      display: none;
+
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(255, 255, 255, 0.8);
+      backdrop-filter: blur(5px);
+
+      z-index: 2000;
+
+      justify-content: center;
+      align-items: center;
+    }
+
+    .loading-content {
+      text-align: center;
+      color: var(--primary-color);
+    }
+
+    .loading-content p {
+      font-weight: 600;
+      font-size: 1.2rem;
+    }
+
+    .btn-cancel-loading {
+      background: #e0e0e0;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 20px;
+      margin-top: 15px;
+      cursor: pointer;
+      color: #333;
+    }
+
+    .btn-cancel-loading:hover {
+      background: #bdbdbd;
+    }
+
+    .plant-loader {
+      display: block;
+      margin: 0 auto 15px auto;
+      width: 200px;
+      height: 200px;
+      background-image: url('https://usagif.com/wp-content/uploads/butterfly-animation-80.gif');
+      background-size: contain;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+
+    <div class="header2">
+      <img id="header-logo2" src="" alt="Logo UCC">
+      <span class="header-title">Universidades Verdes, UCC</span>
+    </div>
+
+    <div class="header">
+      <div class="header-main">
+        <a href="<?= dashboardUrl ?>" class="btn-back" title="Volver al Listado">←</a>
+        <h1 id="page-title">Nueva</h1>
+      </div>
+      <div class="user-info">
+        👤 <span class="user-email"><?= userEmail ?></span>
+        <br>
+        <a href="<?= changeAccountUrl ?>">Cambiar de cuenta</a>
+        <a id="logoutBtn" href="#">Cerrar Sesión</a>
+      </div>
+    </div>
+
+    <form id="plantForm">
+
+      <div class="gemini-section">
+        <p>¿No sabes qué planta es?</p>
+        <button type="button" id="btnIdentificar" class="btn-gemini">
+          ✨ Identificar con IA
+        </button>
+      </div>
+
+      <div class="form-section">
+        <label for="nombre_comun">Nombree Común</label>
+        <input type="text" id="nombre_comun" name="nombre_comun" required>
+      </div>
+
+      <div class="form-section">
+        <label for="nombre_cientifico">Nombre Científico</label>
+        <input type="text" id="nombre_cientifico" name="nombre_cientifico" required>
+      </div>
+      <div class="form-section">
+        <label for="uso">Uso Principal</label>
+        <textarea id="uso" name="uso" required></textarea>
+      </div>
+
+      <div class="form-section">
+        <label for="familia">Familia</label>
+        <input type="text" id="familia" name="familia" required>
+      </div>
+
+      <div class="form-section">
+        <label>Ubicación</label>
+        <div class="location-group">
+          <div style="display:none" class="location-toggle">
+            <input type="checkbox" id="manual-location-toggle">
+            <label for="manual-location-toggle" style="font-weight: normal; margin-bottom: 0;">Ingresar solo descripción manual (sin GPS)</label>
+          </div>
+          <div id="auto-location-fields">
+            <p id="location-status">Solicitando permiso de ubicación...</p>
+          </div>
+          <div id="manual-location-fields">
+          </div>
+          <label for="ubicacion">Nombre o Descripción del Lugar</label>
+          <input type="text" id="ubicacion" name="ubicacion" placeholder="Ej: Frente a la cancha" required>
+          <input type="hidden" id="latitud" name="latitud">
+          <input type="hidden" id="longitud" name="longitud">
+        </div>
+      </div>
+
+      <div class="form-section">
+
+        <label>Fotos de la Planta (al menos una)</label>
+        <div class="photo-uploader">
+          <div id="thumbnails"></div>
+          <p style="margin-top: 15px; color: #666;">Añade fotos de tu planta:</p>
+          <div class="photo-buttons">
+            <label for="photo-input" class="btn-photo">📂 Galería</label>
+            <label for="camera-input" class="btn-photo">📸 Cámara</label>
+          </div>
+          <input type="file" id="photo-input" accept="image/*" multiple>
+          <input type="file" id="camera-input" accept="image/*" capture="environment">
+        </div>
+      </div>
+      <button type="submit" id="submitBtn">Registrar Planta</button>
+      <div id="status"></div>
+    </form>
+    <!-- </div> -->
+  </div>
+
+  </div>
+  <div id="gemini-modal" class="modal-overlay">
+    <div class="modal-content">
+      <h3 id="gemini-modal-title">Identificando Planta</h3>
+      <div id="gemini-modal-body">
+      </div>
+      <div class="modal-actions">
+        <button id="btnCancelarIdentificacion" class="modal-btn btn-cancel">Cancelar</button>
+        <button id="btnAceptarIdentificacion" class="modal-btn btn-accept" disabled>Usar esta Información</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="loading-overlay" class="loading-overlay">
+    <div class="loading-content">
+      <div class="plant-loader"></div>
+      <p id="loading-text">Procesando...</p>
+      <button id="btnCancelarProceso" class="btn-cancel-loading">Cancelar</button>
+    </div>
+  </div>
+
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js">
+  </script>
+  <script>
+    window.addEventListener('load', function() {
+    const statusEl = document.getElementById('location-status');
+    const latInput = document.getElementById('latitud');
+    const lonInput = document.getElementById('longitud');
+    const manualToggle = document.getElementById('manual-location-toggle');
+    const autoFields = document.getElementById('auto-location-fields');
+    
+  google.script.run
+        .withSuccessHandler(function(logoResult) {
+          if (logoResult.success) {
+            document.getElementById('header-logo2').src = logoResult.base64;
+        }
+    })
+  .getDefaultLogoBase64();
+
+    function getLocation() {
+      if (navigator.geolocation) {
+        statusEl.textContent = 'Solicitando permiso de ubicación...';
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+            latInput.value = lat;
+            lonInput.value = lon;
+            statusEl.textContent = `✅ Coordenadas: ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+          },
+          (error) => {
+            statusEl.textContent = `❌ Permiso de GPS denegado. Se guardará sin coordenadas.`;
+            latInput.value = '';
+            lonInput.value = '';
+          }
+        );
+      } else {
+        statusEl.textContent = 'Geolocalización no es soportada por este navegador.';
+      }
+    }
+
+    function toggleLocationFields() {
+      //obtener o no gps
+      if (manualToggle.checked) {
+        autoFields.style.display = 'none';
+        latInput.value = '';
+        lonInput.value = '';
+      } else {
+        autoFields.style.display = 'block';
+        getLocation();
+      }
+    }
+    manualToggle.addEventListener('change', toggleLocationFields);
+    getLocation();
+  });
+
+  let photoFiles = [];
+  const photoInput = document.getElementById('photo-input');
+  const cameraInput = document.getElementById('camera-input');
+  const thumbnailsContainer = document.getElementById('thumbnails');
+  
+  photoInput.addEventListener('change', handleFiles);
+  cameraInput.addEventListener('change', handleFiles);
+
+function handleFiles(event) {
+    const files = event.target.files;
+    const promises = [];
+
+    for (let i = 0; i < files.length; i++) {
+      promises.push(
+        resizeImage(files[i]).then(resized => {
+          photoFiles.push(resized);
+        })
+      );
+    }
+
+    Promise.all(promises).then(() => {
+      renderThumbnails();
+    });
+
+    event.target.value = '';
+  }
+
+  function resizeImage(file, maxSize = 1200, quality = 0.8) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      const reader = new FileReader();
+
+      reader.onload = (e) => img.src = e.target.result;
+
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxSize) {
+            height = Math.round((height * maxSize) / width);
+            width = maxSize;
+          }
+        } else {
+          if (height > maxSize) {
+            width = Math.round((width * maxSize) / height);
+            height = maxSize;
+          }
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(
+          (blob) => {
+            resolve(new File([blob], file.name, { type: "image/jpeg" }));
+          },
+          "image/jpeg",
+          quality
+        );
+      };
+
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function renderThumbnails() {
+    thumbnailsContainer.innerHTML = '';
+    photoFiles.forEach((file, index) => {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const thumbItem = document.createElement('div');
+        thumbItem.className = 'thumbnail-item';
+        thumbItem.innerHTML = `<img src="${e.target.result}" alt="thumbnail"><button type="button" class="delete-btn" data-index="${index}">&times;</button>`;
+        thumbnailsContainer.appendChild(thumbItem);
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  thumbnailsContainer.addEventListener('click', function(e) {
+    if (e.target.classList.contains('delete-btn')) {
+      e.preventDefault(); // Prevenir que el botón envíe el formulario
+      const index = parseInt(e.target.dataset.index);
+      photoFiles.splice(index, 1);
+      renderThumbnails();
+    }
+  });
+
+  function generateStyledQR(url, logoBase64, callback) {
+    const desiredResolution = 1000; // Píxeles. Un buen punto de partida para impresión.
+                                    // Puedes probar con 1500 o 2000 si necesitas más.
+    const canvas = document.createElement('canvas');
+    canvas.width = desiredResolution;
+    canvas.height = desiredResolution;
+    const ctx = canvas.getContext('2d');
+    
+    let logoImage = null;
+    if (logoBase64) {
+      logoImage = new Image();
+      // Ajuste para CORS si el logo no carga (a veces puede pasar con imágenes base64 si no son perfectas)
+      logoImage.crossOrigin = "Anonymous"; 
+      logoImage.onload = () => draw(false);
+      logoImage.onerror = () => { 
+        console.warn("Logo no cargó, dibujando QR sin él. Verifique el ID o permisos del logo."); 
+        draw(true); 
+      };
+      logoImage.src = logoBase64;
+    } else {
+      draw(true); // Dibuja sin logo si no se proporcionó
+    }
+
+    function draw(logoFailed) {
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const qr = qrcode(0, 'H'); // Nivel de corrección 'High' es adecuado.
+      qr.addData(url);
+      qr.make();
+      const moduleCount = qr.getModuleCount();
+      
+      // Ajustamos el tamaño del módulo basándonos en la nueva resolución y el margen
+      const marginModules = 4; // Borde de 2 módulos en cada lado (total 4 módulos adicionales)
+      const moduleSize = canvas.width / (moduleCount + marginModules); 
+
+      // Mismo degradado de alto contraste
+      const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      gradient.addColorStop(0, "#257732"); 
+      gradient.addColorStop(1, "#3e1a09");
+      ctx.fillStyle = gradient;
+      
+      // El logo sigue siendo un 25% del *nuevo* tamaño total del QR
+      const logoDimension = canvas.width * 0.25; 
+      const logoX = (canvas.width - logoDimension) / 2;
+      const logoY = (canvas.height - logoDimension) / 2;
+
+      for (let r = 0; r < moduleCount; r++) {
+        for (let c = 0; c < moduleCount; c++) {
+          if (qr.isDark(r, c)) {
+            // Ajuste de posición por el margen de 2 módulos
+            const x = (c + (marginModules / 2)) * moduleSize; 
+            const y = (r + (marginModules / 2)) * moduleSize; 
+            
+            if (!logoFailed && x < logoX + logoDimension && x + moduleSize > logoX && y < logoY + logoDimension && y + moduleSize > logoY) {
+              continue;
+            }
+
+            // Usamos cuadrados para máxima fiabilidad en la lectura
+            ctx.fillRect(x, y, moduleSize, moduleSize);
+          }
+        }
+      }
+      
+      // Dibujar el logo si no falló
+      if (!logoFailed && logoImage) {
+        const borderRadius = 8; 
+        ctx.save();
+        ctx.beginPath();
+        // Dibujamos el rectángulo redondeado para el clip mask
+        ctx.moveTo(logoX + borderRadius, logoY);
+        ctx.arcTo(logoX + logoDimension, logoY, logoX + logoDimension, logoY + logoDimension, borderRadius);
+        ctx.arcTo(logoX + logoDimension, logoY + logoDimension, logoX, logoY + logoDimension, borderRadius);
+        ctx.arcTo(logoX, logoY + logoDimension, logoX, logoY, borderRadius);
+        ctx.arcTo(logoX, logoY, logoX + logoDimension, logoY, borderRadius);
+        ctx.closePath();
+        ctx.clip(); // Aplicar la máscara
+        ctx.drawImage(logoImage, logoX, logoY, logoDimension, logoDimension);
+        ctx.restore(); // Restaurar el contexto del canvas
+      }
+      
+      callback(canvas.toDataURL('image/png'));
+    }
+  }
+
+  document.getElementById('plantForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const submitBtn = document.getElementById('submitBtn');
+    const statusDiv = document.getElementById('status');
+    
+    if (photoFiles.length === 0) {
+      statusDiv.textContent = 'Debes agregar al menos una foto.';
+      statusDiv.style.color = 'red';
+      return;
+    }
+
+    showLoader('Procesando imágenes...', true);
+    submitBtn.disabled = true;
+    
+    const filesDataPromises = photoFiles.map(file => {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve({
+          name: file.name,
+          mimeType: file.type,
+          base64: reader.result.split(',')[1]
+        });
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    });
+
+    Promise.all(filesDataPromises).then(filesData => {
+      showLoader('Registrando datos de la planta...');
+      const formObject = Object.fromEntries(new FormData(e.target).entries());
+
+      google.script.run
+        .withSuccessHandler(dataResponse => {
+          if (!dataResponse.success) {
+            onFailure({ message: dataResponse.message });
+            return;
+          }
+          
+          showLoader('Generando Código QR...');
+          const continueProcess = (logoBase64) => {
+            generateStyledQR(dataResponse.plantViewUrl, logoBase64, (qrBase64) => {
+              showLoader('Guardando archivos y enviando correo...', false); // No cancelable en el último paso
+              google.script.run
+                .withSuccessHandler(onSuccess)
+                .withFailureHandler(onFailure)
+                .savePlantFiles(dataResponse.plantId, qrBase64, filesData);
+            });
+          };
+          google.script.run.withSuccessHandler(logoResponse => {
+            continueProcess(logoResponse.success ? logoResponse.base64 : null);
+          }).withFailureHandler(() => continueProcess(null))
+          .getDefaultLogoBase64();
+        })
+        .withFailureHandler(onFailure)
+        .registerPlantData(formObject);
+    });
+  });
+
+  function onSuccess(response) {
+
+  hideLoader();
+
+  const mainTitle = document.getElementById('page-title');
+  const statusDiv = document.getElementById('status');
+  const form = document.getElementById('plantForm');
+
+  mainTitle.textContent = "Registrado con Éxito";
+  statusDiv.textContent = "Planta registrada y QR enviado a tu correo.";
+  statusDiv.style.color = 'green';
+  
+  form.style.display = 'none';
+
+  // Botón principal de éxito
+  const successLink = document.createElement('a');
+  successLink.href = '<?= dashboardUrl ?>';
+  successLink.className = 'btn-success';
+  successLink.textContent = '✓ ¡Éxito! Volver a Mis Plantas';
+  statusDiv.insertAdjacentElement('afterend', successLink);
+
+  // FAB para “registrar otra planta” sin reload
+  const fab = document.createElement('a');
+  fab.className = 'fab';
+  fab.title = 'Registrar otra Planta';
+  fab.textContent = '+';
+
+fab.addEventListener('click', function(e) {
+  e.preventDefault();
+
+  // Restaurar título y mensajes
+  document.getElementById('page-title').textContent = 'Nueva';
+  const statusDiv = document.getElementById('status');
+  statusDiv.textContent = '';
+  statusDiv.style.color = 'black';
+
+  // Restaurar formulario
+  const form = document.getElementById('plantForm');
+  form.style.display = 'block';
+  form.reset();
+
+  // Limpiar inputs type=file manualmente
+  document.getElementById('photo-input').value = '';
+  document.getElementById('camera-input').value = '';
+
+  // Limpiar array de fotos y thumbnails
+  photoFiles.length = 0; // Mantiene referencia global, vacía el array
+  document.getElementById('thumbnails').innerHTML = '';
+
+  // Reactivar botón de enviar
+  const submitBtn = document.getElementById('submitBtn');
+  submitBtn.disabled = false;
+  submitBtn.textContent = 'Registrar Planta';
+
+  // Quitar FAB y link de éxito
+  fab.remove();
+  const successLink = document.querySelector('.btn-success');
+  if (successLink) successLink.remove();
+});
+
+
+  document.body.appendChild(fab);
+}
+
+
+  function onFailure(error) {
+
+    hideLoader();
+
+    const statusDiv = document.getElementById('status');
+    const submitBtn = document.getElementById('submitBtn');
+    statusDiv.textContent = 'Error: ' + error.message;
+    statusDiv.style.color = 'red';
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Registrar y Generar QR';
+  }
+
+  document.getElementById('logoutBtn').addEventListener('click', function(e) {
+    e.preventDefault();
+    this.textContent = 'Cerrando...';
+    google.script.run
+      .withSuccessHandler(onLogoutSuccess)
+      .softLogout();
+  });
+
+  function onLogoutSuccess(redirectUrl) {
+    window.top.location.href = redirectUrl;
+  }
+
+  // GEMINI
+const btnIdentificar = document.getElementById('btnIdentificar');
+const modal = document.getElementById('gemini-modal');
+const modalTitle = document.getElementById('gemini-modal-title');
+const modalBody = document.getElementById('gemini-modal-body');
+const btnAceptar = document.getElementById('btnAceptarIdentificacion');
+const btnCancelar = document.getElementById('btnCancelarIdentificacion');
+
+let ultimaIdentificacion = null;
+let geminiRequestActive = false;
+let retryCount = 0;
+const maxRetries = 1;
+
+  function identificar() {
+    if (photoFiles.length === 0) {
+      alert("Por favor, sube o toma una foto primero para poder identificar la planta.");
+      return;
+    }
+    
+    geminiRequestActive = true;
+    retryCount = 0;
+    btnAceptar.disabled = true;
+    modalTitle.textContent = "Identificando Planta";
+    
+    modalBody.innerHTML = `<div class="plant-loader"></div><p>Analizando imagen con IA... Por favor, espera.</p>`;
+    
+    modal.classList.add('active');
+    document.body.classList.add('modal-open');
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const base64Data = e.target.result.split(",")[1];
+      llamarApiGemini(base64Data);
+    };
+    reader.readAsDataURL(photoFiles[0]);
+  }
+
+  function llamarApiGemini(base64Data) {
+    if (!geminiRequestActive) return;
+
+    google.script.run
+      .withSuccessHandler(onGeminiSuccess)
+      .withFailureHandler(onGeminiFailure)
+      .identificarPlanta(base64Data);
+  }
+
+  function onGeminiSuccess(response) {
+    if (!geminiRequestActive) return;
+    
+    if (response.success && response.data.nombreComun) {
+      ultimaIdentificacion = response.data;
+      modalTitle.textContent = "¡Planta Identificada!";
+      modalBody.innerHTML = `
+        <p>Esta es tu planta:</p>
+        <div id="gemini-result-display">
+          <strong>Nombre Común:</strong> ${ultimaIdentificacion.nombreComun}<br>
+          <strong>Nombre Científico:</strong> ${ultimaIdentificacion.nombreCientifico}<br>
+          <strong>Familia:</strong> ${ultimaIdentificacion.familia}<br>
+          <strong>Uso Sugerido:</strong> ${ultimaIdentificacion.uso}
+        </div>
+      `;
+      btnAceptar.disabled = false;
+    } else {
+      onGeminiFailure({ message: "Estoy cansada jefe. Vuelve a intentarlo." });
+    }
+  }
+  
+  function onGeminiFailure(error) {
+    if (!geminiRequestActive) return;
+
+    if (retryCount < maxRetries) {
+      retryCount++;
+      console.log(`Intento fallido. Reintentando (${retryCount}/${maxRetries})...`);
+
+      const reader = new FileReader();
+      reader.onload = (e) => llamarApiGemini(e.target.result.split(",")[1]);
+      reader.readAsDataURL(photoFiles[0]);
+    } else {
+      modalTitle.textContent = "No pude leerla";
+      modalBody.innerHTML = `<p>No pude identificar esa planta.<br><strong>???:</strong> ${error.message}</p><p>Intenta tomar una foto mas clara. Sino, ingrésala manualmente.</p>`;
+    }
+  }
+
+  function aceptarIdentificacion() {
+    if (ultimaIdentificacion) {
+      document.getElementById("nombre_comun").value = ultimaIdentificacion.nombreComun || "";
+      document.getElementById("nombre_cientifico").value = ultimaIdentificacion.nombreCientifico || "";
+      document.getElementById("familia").value = ultimaIdentificacion.familia || "";
+      document.getElementById("uso").value = ultimaIdentificacion.uso || "";
+    }
+    cerrarModal();
+  }
+
+  function cerrarModal() {
+    geminiRequestActive = false;
+    modal.classList.remove('active');
+  }
+
+  btnIdentificar.addEventListener('click', identificar);
+  btnAceptar.addEventListener('click', aceptarIdentificacion);
+  btnCancelar.addEventListener('click', cerrarModal);
+
+  const loadingOverlay = document.getElementById('loading-overlay');
+  const loadingText = document.getElementById('loading-text');
+  const btnCancelarProceso = document.getElementById('btnCancelarProceso');
+  let esCancelable = true;
+
+  function showLoader(message, cancelable = true) {
+    loadingText.textContent = message;
+    esCancelable = cancelable;
+    btnCancelarProceso.style.display = cancelable ? 'inline-block' : 'none';
+    loadingOverlay.style.display = 'flex';
+  }
+
+  function hideLoader() {
+    loadingOverlay.style.display = 'none';
+  }
+
+  btnCancelarProceso.addEventListener('click', () => {
+    if (esCancelable) {
+      hideLoader();
+      const submitBtn = document.getElementById('submitBtn');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Registrar Planta';
+      document.getElementById('status').textContent = 'Registro cancelado por el usuario.';
+      document.getElementById('status').style.color = 'orange';
+    }
+  });
+
+  </script>
+
+</body>
+
+</html>
