@@ -505,6 +505,112 @@ function savePlantFiles(plantId, qrBase64, imagesData) {
   }
 }
 
+/****************************************************************
+ * MODO DIAGNÓSTICO TEMPORAL
+ * Estas funciones no sustituyen savePlantFiles(). Nunca envían correo y
+ * escriben exclusivamente sobre un registro/una carpeta TEST_DIAGNOSTICO.
+ ****************************************************************/
+function diagnosticRegisterPlantData() {
+  const stamp = new Date().getTime();
+  // Se reutiliza intencionalmente el registro normal para comprobar ese paso
+  // sin Gemini, con valores inequívocamente temporales.
+  return registerPlantData({
+    nombre_comun: 'TEST_DIAGNOSTICO',
+    nombre_cientifico: 'TEST_DIAGNOSTICO_' + stamp,
+    familia: 'TEST_DIAGNOSTICO', uso: 'Prueba temporal de diagnóstico',
+    ubicacion: 'TEST_DIAGNOSTICO', latitud: '', longitud: ''
+  });
+}
+
+function diagnosticSavePlantFiles(plantId, qrBase64, imagesData) {
+  const result = {
+    success: false, failedStep: '', message: '', steps: [], plantId: plantId || '', plantViewUrl: '',
+    imageFileId: '', imageUrl: '', qrFileId: '', qrUrl: '', imageBase64Length: 0,
+    qrBase64Length: typeof qrBase64 === 'string' ? qrBase64.length : 0, imageMimeType: '',
+    qrMimeType: '', imageBlobBytes: 0, qrBlobBytes: 0, coordinatorEmail: '', folderName: '',
+    plantName: '', sheetRow: 0, error: {}
+  };
+  const names = {
+    9: 'QR Base64 recibido por Apps Script', 10: 'Fotografía convertida correctamente a Blob',
+    11: 'QR convertido correctamente a Blob', 12: 'Spreadsheet localizado',
+    13: 'Registro de planta localizado', 14: 'FOLDER_ID localizado',
+    15: 'Carpeta del coordinador localizada/creada', 16: 'Carpeta de la planta localizada/creada',
+    17: 'Fotografía guardada en Drive', 18: 'ID de la fotografía obtenido',
+    19: 'QR guardado en Drive', 20: 'ID del QR obtenido',
+    21: 'URL de la fotografía generada', 22: 'URL del QR generada',
+    23: 'urls_imagenes actualizado en Sheets', 24: 'url_qr actualizado en Sheets'
+  };
+  let currentStep = 9;
+  function log(step, details) { Logger.log('[DIAGNOSTICO][%s] %s', ('0' + step).slice(-2), details); }
+  function pass(step, details) { result.steps.push({ step: step, name: names[step], status: 'success', details: details }); log(step, 'OK: ' + details); }
+  function fail(step, error) {
+    const text = error && error.message || String(error);
+    result.steps.push({ step: step, name: names[step], status: 'error', details: text });
+    result.failedStep = step + '. ' + names[step]; result.message = text;
+    result.error = { message: text, stack: error && error.stack || '', toString: error && error.toString ? error.toString() : String(error) };
+    log(step, 'ERROR: ' + result.error.toString + ' ' + result.error.stack);
+  }
+  try {
+    if (!Array.isArray(imagesData) || imagesData.length !== 1) throw new Error('El diagnóstico requiere exactamente una fotografía.');
+    const image = imagesData[0] || {};
+    result.imageBase64Length = typeof image.base64 === 'string' ? image.base64.length : 0;
+    result.imageMimeType = image.mimeType || '';
+    log(9, 'Recibido: plantId=' + plantId + ', qrLength=' + result.qrBase64Length + ', images=1, imageName=' + (image.name || '') + ', imageMime=' + result.imageMimeType + ', imageLength=' + result.imageBase64Length);
+    if (typeof qrBase64 !== 'string' || !/^data:image\/png;base64,/i.test(qrBase64)) throw new Error('qrBase64 no existe o no comienza con data:image/png;base64,.');
+    result.qrMimeType = 'image/png'; pass(9, 'QR recibido; longitud=' + result.qrBase64Length + ', MIME=image/png');
+
+    currentStep = 10; const imageBlob = dataUrlToBlob_(image, 'fotografía de diagnóstico', false);
+    result.imageBlobBytes = imageBlob.getBytes().length; pass(10, 'Blob de foto: MIME=' + imageBlob.getContentType() + ', bytes=' + result.imageBlobBytes);
+    currentStep = 11; const qrBlob = dataUrlToBlob_(qrBase64, 'QR de diagnóstico', true);
+    result.qrBlobBytes = qrBlob.getBytes().length; result.qrMimeType = qrBlob.getContentType(); pass(11, 'Blob QR: MIME=' + result.qrMimeType + ', bytes=' + result.qrBlobBytes);
+
+    currentStep = 12; const ss = SpreadsheetApp.openById(SPREADSHEET_ID); const sheet = ss.getSheetByName(PLANTS_DATA_SHEET_NAME);
+    if (!sheet) throw new Error('No existe la hoja ' + PLANTS_DATA_SHEET_NAME + '.'); pass(12, 'Spreadsheet=' + SPREADSHEET_ID + ', hoja=' + PLANTS_DATA_SHEET_NAME);
+    currentStep = 13; const values = sheet.getDataRange().getValues(); const headers = values.shift().map(function(h) { return String(h).trim().toLowerCase(); });
+    const idCol = headers.indexOf(HEADERS.ID), imagesCol = headers.indexOf(HEADERS.URLS_IMAGENES), qrCol = headers.indexOf(HEADERS.URL_QR);
+    if (idCol < 0 || imagesCol < 0 || qrCol < 0) throw new Error('No se localizaron las columnas requeridas: id_planta, urls_imagenes, url_qr.');
+    const rowIndex = values.findIndex(function(row) { return String(row[idCol]).trim() === String(plantId).trim(); }); if (rowIndex < 0) throw new Error('No se localizó el registro temporal con ID ' + plantId + '.');
+    const row = values[rowIndex]; result.sheetRow = rowIndex + 2; result.coordinatorEmail = String(row[headers.indexOf(HEADERS.REGISTRADO_POR)] || ''); result.plantName = String(row[headers.indexOf(HEADERS.NOMBRE_CIENTIFICO)] || '');
+    if (!/^TEST_DIAGNOSTICO_/i.test(result.plantName)) throw new Error('Por seguridad, el diagnóstico solo acepta registros TEST_DIAGNOSTICO.');
+    pass(13, 'Fila=' + result.sheetRow + ', planta=' + result.plantName + ', coordinador=' + result.coordinatorEmail);
+    currentStep = 14; const root = DriveApp.getFolderById(FOLDER_ID); pass(14, 'FOLDER_ID localizado: ' + root.getId());
+    currentStep = 15; const coordinatorFolder = getOrCreateFolder(root, result.coordinatorEmail); pass(15, 'Carpeta coordinador=' + coordinatorFolder.getName() + ', id=' + coordinatorFolder.getId());
+    currentStep = 16; const folder = getOrCreateFolder(coordinatorFolder, result.plantName); result.folderName = folder.getName(); pass(16, 'Carpeta temporal=' + result.folderName + ', id=' + folder.getId());
+    currentStep = 17; imageBlob.setName('DIAGNOSTICO_TEST_FOTO_' + new Date().getTime() + '_' + (image.name || 'foto')); const imageFile = folder.createFile(imageBlob);
+    if (!imageFile) throw new Error('DriveApp.createFile() devolvió un archivo de fotografía nulo.'); imageFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); pass(17, 'Archivo foto creado: name=' + imageFile.getName() + ', mime=' + imageFile.getMimeType() + ', size=' + imageFile.getSize());
+    currentStep = 18; result.imageFileId = imageFile.getId(); if (!result.imageFileId || !DriveApp.getFileById(result.imageFileId)) throw new Error('No se pudo volver a localizar el archivo de fotografía en Drive.'); pass(18, 'ID foto=' + result.imageFileId);
+    currentStep = 21; result.imageUrl = imageFile.getUrl(); if (!isHttpUrl_(result.imageUrl)) throw new Error('Drive devolvió una URL de fotografía inválida: ' + result.imageUrl); pass(21, 'URL foto=' + result.imageUrl);
+    currentStep = 19; qrBlob.setName('DIAGNOSTICO_TEST_QR_' + new Date().getTime() + '.png'); const qrFile = folder.createFile(qrBlob);
+    if (!qrFile) throw new Error('DriveApp.createFile() devolvió un archivo QR nulo.'); qrFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); pass(19, 'Archivo QR creado: name=' + qrFile.getName() + ', mime=' + qrFile.getMimeType() + ', size=' + qrFile.getSize());
+    currentStep = 20; result.qrFileId = qrFile.getId(); if (!result.qrFileId || !DriveApp.getFileById(result.qrFileId)) throw new Error('No se pudo volver a localizar el archivo QR en Drive.'); pass(20, 'ID QR=' + result.qrFileId);
+    currentStep = 22; result.qrUrl = qrFile.getUrl(); if (!isHttpUrl_(result.qrUrl)) throw new Error('Drive devolvió una URL de QR inválida: ' + result.qrUrl); pass(22, 'URL QR=' + result.qrUrl);
+    currentStep = 23; const imageCell = sheet.getRange(result.sheetRow, imagesCol + 1); const imageValue = JSON.stringify([result.imageUrl]); imageCell.setValue(imageValue); SpreadsheetApp.flush(); const imageRead = imageCell.getValue(); if (imageRead !== imageValue) throw new Error('Verificación Sheets foto falló. Escrito=' + imageValue + ', leído=' + imageRead); pass(23, 'Fila=' + result.sheetRow + ', columna=' + (imagesCol + 1) + ', escrito/leído=' + imageRead);
+    currentStep = 24; const qrCell = sheet.getRange(result.sheetRow, qrCol + 1); qrCell.setValue(result.qrUrl); SpreadsheetApp.flush(); const qrRead = qrCell.getValue(); if (qrRead !== result.qrUrl) throw new Error('Verificación Sheets QR falló. Escrito=' + result.qrUrl + ', leído=' + qrRead); pass(24, 'Fila=' + result.sheetRow + ', columna=' + (qrCol + 1) + ', escrito/leído=' + qrRead);
+    result.success = true; result.message = 'PRUEBA COMPLETADA SIN ENVIAR CORREO'; Logger.log('[DIAGNOSTICO] COMPLETADO: sin MailApp.sendEmail().'); return result;
+  } catch (error) { fail(currentStep, error); return result; }
+}
+
+function testDriveAndSheetsConnection() {
+  const report = { success: false, checks: [], message: '' };
+  function check(name, fn) { try { const detail = fn(); report.checks.push({ name: name, success: true, details: detail }); Logger.log('[DIAGNOSTICO][CONEXION] OK %s: %s', name, detail); return detail; } catch (e) { report.checks.push({ name: name, success: false, details: e.message, stack: e.stack || '' }); throw e; } }
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    report.checks.push({ name: 'Sheets / SPREADSHEET_ID', success: true, details: ss.getName() });
+    Logger.log('[DIAGNOSTICO][CONEXION] OK Sheets / SPREADSHEET_ID: %s', ss.getName());
+    const sheet = ss.getSheetByName(PLANTS_DATA_SHEET_NAME); if (!sheet) throw new Error('Hoja plantas no encontrada.');
+    report.checks.push({ name: 'Hoja plantas', success: true, details: sheet.getName() });
+    const root = DriveApp.getFolderById(FOLDER_ID);
+    report.checks.push({ name: 'Drive / FOLDER_ID', success: true, details: root.getName() + ' (' + root.getId() + ')' });
+    const folder = root.createFolder('DIAGNOSTICO_TEST_CONEXION_' + new Date().getTime());
+    report.checks.push({ name: 'Carpeta temporal', success: true, details: folder.getName() + ' (' + folder.getId() + ')' });
+    const file = folder.createFile('DIAGNOSTICO_TEST.txt', 'Prueba de conexión temporal.', MimeType.PLAIN_TEXT);
+    report.checks.push({ name: 'Archivo temporal', success: true, details: file.getName() + ' (' + file.getId() + ')' });
+    check('Lectura de archivo temporal', function() { return DriveApp.getFileById(file.getId()).getName(); });
+    check('Encabezados y columnas', function() { const h = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(function(x) { return String(x).trim().toLowerCase(); }); ['id_planta', 'urls_imagenes', 'url_qr'].forEach(function(x) { if (h.indexOf(x) < 0) throw new Error('Falta encabezado ' + x); }); return h.join(', '); });
+    report.success = true; report.message = '✓ Drive OK; ✓ Sheets OK; ✓ Folder OK'; return report;
+  } catch (error) { report.message = error.message; report.error = { message: error.message, stack: error.stack || '', toString: error.toString() }; Logger.log('[DIAGNOSTICO][CONEXION] ERROR: %s', report.error.stack || report.error.toString); return report; }
+}
+
 function dataUrlToBlob_(input, label, requirePng) {
   let base64;
   let mimeType;

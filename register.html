@@ -309,6 +309,16 @@
       cursor: not-allowed;
     }
 
+    .diagnostic-panel { margin-top: 20px; padding: 16px; border: 2px dashed #a96800; border-radius: 8px; background: #fff9ed; }
+    .diagnostic-panel h3 { margin-top: 0; color: #704400; }
+    .diagnostic-panel button { width: 100%; padding: 12px; border: 0; border-radius: 6px; background: #8a5200; color: white; cursor: pointer; font-weight: bold; }
+    .diagnostic-steps { list-style: none; padding: 0; margin: 14px 0; font-size: 0.9em; }
+    .diagnostic-steps li { padding: 5px 0; border-bottom: 1px solid #ead7b3; }
+    .diagnostic-steps .running { color: #8a5200; font-weight: bold; }
+    .diagnostic-steps .success { color: #167a2d; }
+    .diagnostic-steps .error { color: #b00020; font-weight: bold; }
+    .diagnostic-result { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .85em; }
+
     #status {
       margin-top: 20px;
       text-align: center;
@@ -645,6 +655,13 @@
       <button type="submit" id="submitBtn">Registrar Planta</button>
       <div id="status"></div>
     </form>
+    <section class="diagnostic-panel" aria-live="polite">
+      <h3>Diagnóstico del proceso <small>(MODO DIAGNÓSTICO: no envía correo)</small></h3>
+      <p>Usa exactamente una fotografía ya seleccionada. Esta prueba crea un registro y archivos <strong>TEST_DIAGNOSTICO</strong> separados.</p>
+      <button type="button" id="diagnosticBtn">🧪 Ejecutar prueba de diagnóstico</button>
+      <ul id="diagnosticSteps" class="diagnostic-steps"></ul>
+      <div id="diagnosticResult" class="diagnostic-result"></div>
+    </section>
     <!-- </div> -->
   </div>
 
@@ -904,7 +921,7 @@ function handleFiles(event) {
       
       try {
         const qrBase64 = canvas.toDataURL('image/png');
-        console.log('QR generado:', { plantViewUrl: url, exists: !!qrBase64, length: qrBase64.length, mime: qrBase64.split(';', 1)[0] });
+        console.log('QR generado:', { plantViewUrl: url, canvas: canvas.width + 'x' + canvas.height, exists: !!qrBase64, moduleCount: moduleCount, length: qrBase64.length, mime: qrBase64.split(';', 1)[0], prefix: qrBase64.substring(0, 32) + '...' });
         callback(qrBase64);
       } catch (error) {
         console.error('No se pudo exportar el QR:', error);
@@ -912,6 +929,74 @@ function handleFiles(event) {
       }
     }
   }
+
+  // MODO DIAGNÓSTICO: flujo aislado; no altera el submit ni savePlantFiles().
+  const diagnosticStepNames = [
+    'Fotografía recibida', 'Fotografía convertida a Base64', 'Datos de planta preparados',
+    'registerPlantData ejecutado', 'plantId recibido', 'plantViewUrl recibido',
+    'generateStyledQR ejecutado', 'QR generado correctamente', 'QR Base64 recibido por Apps Script',
+    'Fotografía convertida correctamente a Blob', 'QR convertido correctamente a Blob', 'Spreadsheet localizado',
+    'Registro de planta localizado', 'FOLDER_ID localizado', 'Carpeta del coordinador localizada/creada',
+    'Carpeta de la planta localizada/creada', 'Fotografía guardada en Drive', 'ID de la fotografía obtenido',
+    'QR guardado en Drive', 'ID del QR obtenido', 'URL de la fotografía generada', 'URL del QR generada',
+    'urls_imagenes actualizado en Sheets', 'url_qr actualizado en Sheets'
+  ];
+  function initDiagnosticPanel() {
+    document.getElementById('diagnosticSteps').innerHTML = diagnosticStepNames.map((name, index) => `<li id="diagnostic-step-${index + 1}">[ ] ${index + 1}. ${name}</li>`).join('');
+    document.getElementById('diagnosticResult').textContent = '';
+  }
+  function setDiagnosticStep(step, status, details) {
+    const item = document.getElementById('diagnostic-step-' + step); if (!item) return;
+    const mark = status === 'success' ? '✓ CORRECTO' : status === 'error' ? '✗ ERROR' : '⏳ EJECUTANDO';
+    item.className = status; item.textContent = `${mark} ${step}. ${diagnosticStepNames[step - 1]}${details ? ' — ' + details : ''}`;
+  }
+  function diagnosticStop(step, error, context) {
+    setDiagnosticStep(step, 'error', error && (error.message || String(error)));
+    const detail = error && (error.message || String(error));
+    document.getElementById('diagnosticResult').textContent = `✗ DIAGNÓSTICO DETENIDO EN EL PASO ${step}\nError técnico: ${detail}\n${context || ''}\nCORREO: NO EJECUTADO — PRUEBA DE DIAGNÓSTICO`;
+    document.getElementById('diagnosticBtn').disabled = false;
+  }
+  function readDiagnosticPhoto(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(reader.error || new Error('FileReader no pudo leer la fotografía.'));
+      reader.onload = () => {
+        const dataUrl = String(reader.result || ''); const match = /^data:([^;,]+);base64,([A-Za-z0-9+/=\s]+)$/i.exec(dataUrl);
+        if (!match) { reject(new Error('La fotografía no se convirtió a un Data URL Base64 válido.')); return; }
+        resolve({ name: file.name || 'foto_diagnostico', mimeType: match[1], base64: match[2].replace(/\s/g, '') });
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+  document.getElementById('diagnosticBtn').addEventListener('click', function() {
+    const button = this; initDiagnosticPanel(); button.disabled = true;
+    if (photoFiles.length !== 1) { diagnosticStop(1, new Error('Seleccione exactamente UNA fotografía antes de iniciar la prueba.')); return; }
+    setDiagnosticStep(1, 'running'); const photo = photoFiles[0]; setDiagnosticStep(1, 'success', `name=${photo.name || ''}, MIME=${photo.type || ''}, bytes=${photo.size || 0}`);
+    setDiagnosticStep(2, 'running');
+    readDiagnosticPhoto(photo).then(imageData => {
+      setDiagnosticStep(2, 'success', `Base64=${imageData.base64.length}, MIME=${imageData.mimeType}`);
+      setDiagnosticStep(3, 'success', 'Datos temporales TEST_DIAGNOSTICO preparados; Gemini no se ejecuta.'); setDiagnosticStep(4, 'running');
+      google.script.run.withSuccessHandler(registerResponse => {
+        if (!registerResponse || !registerResponse.success) { diagnosticStop(4, new Error(registerResponse && registerResponse.message || 'registerPlantData no devolvió éxito.')); return; }
+        setDiagnosticStep(4, 'success', 'Registro temporal creado.'); setDiagnosticStep(5, 'success', 'plantId=' + registerResponse.plantId); setDiagnosticStep(6, 'success', 'plantViewUrl=' + registerResponse.plantViewUrl);
+        setDiagnosticStep(7, 'running');
+        generateStyledQR(registerResponse.plantViewUrl, null, qrBase64 => {
+          if (!isValidQrDataUrl(qrBase64)) { diagnosticStop(8, new Error('QR inválido: se esperaba data:image/png;base64,.')); return; }
+          setDiagnosticStep(7, 'success', 'generateStyledQR ejecutado.'); setDiagnosticStep(8, 'success', `QR PNG generado; longitud=${qrBase64.length}; prefix=${qrBase64.substring(0, 32)}...`);
+          console.log('[DIAGNOSTICO] Antes de google.script.run.diagnosticSavePlantFiles', { plantId: registerResponse.plantId, qrBase64Exists: !!qrBase64, qrBase64Length: qrBase64.length, imagesDataLength: 1, firstImage: { name: imageData.name, mimeType: imageData.mimeType, base64Length: imageData.base64.length } });
+          for (let i = 9; i <= 24; i++) setDiagnosticStep(i, 'running');
+          google.script.run.withSuccessHandler(result => {
+            (result.steps || []).forEach(s => setDiagnosticStep(s.step, s.status, s.details));
+            const context = `plantId: ${result.plantId || registerResponse.plantId}\ncoordinador: ${result.coordinatorEmail || ''}\ncarpeta: ${result.folderName || ''}\nplanta: ${result.plantName || ''}\nBase64 foto/QR: ${result.imageBase64Length || 0}/${result.qrBase64Length || 0}\nBlob foto/QR: ${result.imageBlobBytes || 0}/${result.qrBlobBytes || 0}\nID foto/QR: ${result.imageFileId || ''}/${result.qrFileId || ''}\nURL foto/QR: ${result.imageUrl || ''}/${result.qrUrl || ''}\n${result.error && (result.error.stack || result.error.toString) || ''}`;
+            if (!result.success) { diagnosticStop((result.steps || []).slice(-1)[0] && (result.steps || []).slice(-1)[0].step || 9, result.error || new Error(result.message), context); return; }
+            document.getElementById('diagnosticResult').textContent = `✓ DIAGNÓSTICO COMPLETADO\n${result.message}\nFila temporal creada: ${result.sheetRow}\n${context}\nFOTOGRAFÍA: Guardada\nQR: Guardado\nSHEETS: Actualizado\nCORREO: NO EJECUTADO — PRUEBA DE DIAGNÓSTICO`;
+            button.disabled = false;
+          }).withFailureHandler(error => diagnosticStop(9, error, 'La llamada google.script.run falló antes de devolver el diagnóstico.'))
+            .diagnosticSavePlantFiles(registerResponse.plantId, qrBase64, [imageData]);
+        });
+      }).withFailureHandler(error => diagnosticStop(4, error)).diagnosticRegisterPlantData();
+    }).catch(error => diagnosticStop(2, error));
+  });
 
   document.getElementById('plantForm').addEventListener('submit', function(e) {
     e.preventDefault();
