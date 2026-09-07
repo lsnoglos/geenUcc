@@ -408,57 +408,131 @@ function getDefaultLogoBase64() {
 }
 
 function savePlantFiles(plantId, qrBase64, imagesData) {
+  const createdFiles = [];
+  let sheetUpdate = null;
   try {
+    if (!isNonEmptyString_(plantId)) throw new Error('No se recibió un ID de planta válido.');
+    if (!Array.isArray(imagesData)) throw new Error('Las fotografías deben enviarse como una lista.');
+
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     const plantSheet = ss.getSheetByName(PLANTS_DATA_SHEET_NAME);
+    if (!plantSheet) throw new Error('No se encontró la hoja de plantas.');
     const data = plantSheet.getDataRange().getValues();
-    const headers = data.shift();
+    if (data.length < 2) throw new Error('No hay registros de plantas para actualizar.');
+    const headers = data.shift().map(function(header) { return String(header).trim().toLowerCase(); });
     const idColIdx = headers.indexOf(HEADERS.ID);
+    const imagesColIdx = headers.indexOf(HEADERS.URLS_IMAGENES);
+    const qrColIdx = headers.indexOf(HEADERS.URL_QR);
+    if (idColIdx === -1 || imagesColIdx === -1 || qrColIdx === -1) throw new Error('Faltan columnas necesarias para guardar archivos.');
 
-    const rowIdx = data.findIndex(row => row[idColIdx] == plantId);
+    const rowIdx = data.findIndex(function(row) { return String(row[idColIdx]).trim() === String(plantId).trim(); });
     if (rowIdx === -1) throw new Error("No se encontró la planta con ID: " + plantId);
 
     const plantRow = data[rowIdx];
     const userEmail = plantRow[headers.indexOf(HEADERS.REGISTRADO_POR)];
     const plantName = plantRow[headers.indexOf(HEADERS.NOMBRE_CIENTIFICO)];
     const comunPlantName = plantRow[headers.indexOf(HEADERS.NOMBRE_COMUN)];
+    if (!isNonEmptyString_(userEmail) || !isNonEmptyString_(plantName)) throw new Error('El registro no tiene coordinador o nombre científico válidos.');
+
+    // Validate and decode every payload before Drive is changed. registrado_por is the
+    // coordinator/owner selected by registerPlantData; colaborador is intentionally not used.
+    const imageBlobs = imagesData.map(function(fileData, index) {
+      return dataUrlToBlob_(fileData, 'fotografía ' + (index + 1), false);
+    });
+    const qrBlob = dataUrlToBlob_(qrBase64, 'código QR', true);
+    Logger.log('savePlantFiles: plantId=%s, images=%s, qrExists=%s, qrMime=%s, qrBytes=%s', plantId, imageBlobs.length, !!qrBase64, qrBlob.getContentType(), qrBlob.getBytes().length);
 
     const rootFolder = DriveApp.getFolderById(FOLDER_ID);
     const userFolder = getOrCreateFolder(rootFolder, userEmail);
     const plantFolder = getOrCreateFolder(userFolder, plantName);
 
-    // Guardar imágenes
+    // All inputs are valid before the first file is created. If a later Drive/Sheets
+    // operation fails, files created by this invocation are removed below.
     let imageURLs = [];
-    imagesData.forEach(fileData => {
-      const blob = Utilities.newBlob(Utilities.base64Decode(fileData.base64), fileData.mimeType, fileData.name);
+    imageBlobs.forEach(function(blob) {
       const newFile = plantFolder.createFile(blob).setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-      imageURLs.push(`https://drive.google.com/uc?export=view&id=${newFile.getId()}`);
+      createdFiles.push(newFile);
+      const imageUrl = 'https://drive.google.com/uc?export=view&id=' + newFile.getId();
+      if (!isHttpUrl_(imageUrl)) throw new Error('Drive devolvió una URL de imagen inválida.');
+      imageURLs.push(imageUrl);
     });
 
-    // Guardar QR
-    const qrParts = qrBase64.split(';base64,');
-    const qrMimeType = qrParts[0].split(':')[1];
-    const qrBlob = Utilities.newBlob(Utilities.base64Decode(qrParts[1]), qrMimeType, `qr_${plantId}.png`);
+    qrBlob.setName('qr_' + plantId + '.png');
     const qrFile = plantFolder.createFile(qrBlob).setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    createdFiles.push(qrFile);
+    const qrUrl = qrFile.getUrl();
+    if (!isHttpUrl_(qrUrl)) throw new Error('Drive devolvió una URL de QR inválida.');
+    Logger.log('savePlantFiles: plantId=%s, createdFiles=%s, qrId=%s, qrUrl=%s', plantId, createdFiles.length, qrFile.getId(), qrUrl);
 
     // Actualizar hoja de cálculo
     const sheetRowIndex = rowIdx + 2;
-    plantSheet.getRange(sheetRowIndex, headers.indexOf(HEADERS.URL_QR) + 1).setValue(qrFile.getUrl());
-    plantSheet.getRange(sheetRowIndex, headers.indexOf(HEADERS.URLS_IMAGENES) + 1).setValue(JSON.stringify(imageURLs));
+    sheetUpdate = {
+      sheet: plantSheet, row: sheetRowIndex, qrColumn: qrColIdx + 1, imagesColumn: imagesColIdx + 1,
+      previousQr: plantRow[qrColIdx], previousImages: plantRow[imagesColIdx]
+    };
+    plantSheet.getRange(sheetRowIndex, qrColIdx + 1).setValue(qrUrl);
+    plantSheet.getRange(sheetRowIndex, imagesColIdx + 1).setValue(JSON.stringify(imageURLs));
 
-    // Enviar correo
-    MailApp.sendEmail({
-      to: userEmail,
-      subject: `Código QR para la planta: ${comunPlantName}`,
-      htmlBody: `Hola,<br><br>Se ha generado un nuevo código QR para tu planta <b>${comunPlantName}</b>.<br><br>Saludos.`,
-      attachments: [qrBlob]
-    });
+    // A mail quota failure must not undo a complete Drive/Sheets operation.
+    let emailWarning = '';
+    try {
+      MailApp.sendEmail({
+        to: userEmail,
+        subject: `Código QR para la planta: ${comunPlantName}`,
+        htmlBody: `Hola,<br><br>Se ha generado un nuevo código QR para tu planta <b>${comunPlantName}</b>.<br><br>Saludos.`,
+        attachments: [qrBlob]
+      });
+    } catch (mailError) {
+      emailWarning = 'Los archivos se guardaron, pero no fue posible enviar el correo.';
+      Logger.log('savePlantFiles: no se pudo enviar correo para plantId=%s: %s', plantId, mailError);
+    }
 
-    return { success: true };
+    return { success: true, imageCount: imageURLs.length, qrUrl: qrUrl, warning: emailWarning };
   } catch (error) {
-    Logger.log(error);
+    Logger.log('savePlantFiles failed for plantId=%s: %s', plantId, error && error.stack || error);
+    if (sheetUpdate) {
+      try {
+        sheetUpdate.sheet.getRange(sheetUpdate.row, sheetUpdate.qrColumn).setValue(sheetUpdate.previousQr);
+        sheetUpdate.sheet.getRange(sheetUpdate.row, sheetUpdate.imagesColumn).setValue(sheetUpdate.previousImages);
+      } catch (rollbackSheetError) {
+        Logger.log('No se pudo revertir Sheets para plantId=%s: %s', plantId, rollbackSheetError);
+      }
+    }
+    createdFiles.forEach(function(file) {
+      try { file.setTrashed(true); } catch (cleanupError) { Logger.log('No se pudo revertir archivo %s: %s', file.getId(), cleanupError); }
+    });
     return { success: false, message: 'Error al guardar archivos: ' + error.toString() };
   }
+}
+
+function dataUrlToBlob_(input, label, requirePng) {
+  let base64;
+  let mimeType;
+  let name;
+  if (typeof input === 'string') {
+    const match = /^data:([^;,]+);base64,([A-Za-z0-9+/=\s]+)$/i.exec(input);
+    if (!match) throw new Error('El ' + label + ' no tiene un Data URL Base64 válido.');
+    mimeType = match[1].toLowerCase();
+    base64 = match[2].replace(/\s/g, '');
+    name = label;
+  } else {
+    input = input || {};
+    if (!isNonEmptyString_(input.base64) || !isNonEmptyString_(input.mimeType)) throw new Error('La ' + label + ' requiere base64 y mimeType.');
+    mimeType = String(input.mimeType).toLowerCase();
+    base64 = String(input.base64).replace(/\s/g, '');
+    name = isNonEmptyString_(input.name) ? input.name : label;
+    if (!/^[A-Za-z0-9+/=]+$/.test(base64)) throw new Error('La ' + label + ' contiene Base64 inválido.');
+  }
+  if (requirePng ? mimeType !== 'image/png' : !/^image\/(jpeg|png|webp|gif)$/i.test(mimeType)) throw new Error('El formato de ' + label + ' no es válido.');
+  if (!base64 || base64.length % 4 === 1) throw new Error('El contenido Base64 de ' + label + ' no es válido.');
+  let bytes;
+  try { bytes = Utilities.base64Decode(base64); } catch (e) { throw new Error('No se pudo decodificar ' + label + '.'); }
+  if (!bytes || !bytes.length) throw new Error('El ' + label + ' no contiene bytes válidos.');
+  return Utilities.newBlob(bytes, mimeType, name);
+}
+
+function isHttpUrl_(value) {
+  return typeof value === 'string' && /^https?:\/\/[^\s]+$/i.test(value);
 }
 
 function identificarPlanta(imageInput) {
@@ -546,7 +620,7 @@ function geminiHttpError_(status, body, operation) {
   Logger.log('Gemini ' + operation + ' HTTP ' + status + ': ' + apiMessage);
   if (status === 401 || status === 403) return { success: false, message: 'No fue posible autenticar el servicio de inteligencia artificial.' };
   if (status === 404) return { success: false, message: 'El modelo de inteligencia artificial no está disponible en este momento.' };
-  if (status === 429) return { success: false, message: 'El servicio está ocupado por límite de uso. Inténtalo nuevamente más tarde.' };
+  if (status === 429 || /RESOURCE_EXHAUSTED/i.test(apiMessage)) return { success: false, message: 'El servicio de inteligencia artificial alcanzó temporalmente su límite de uso. Inténtalo nuevamente más tarde.' };
   return { success: false, message: 'No fue posible consultar la información de la planta en este momento. Inténtalo nuevamente.' };
 }
 
@@ -560,7 +634,13 @@ function getGeminiImageInput_(input) {
   if (!/^image\/(jpeg|png|webp|gif)$/i.test(mimeType) || !/^[A-Za-z0-9+/=\s]+$/.test(base64)) {
     return { success: false, message: 'La imagen no tiene un formato compatible. Usa JPEG, PNG, WEBP o GIF.' };
   }
-  return { success: true, mimeType: mimeType, base64: base64.replace(/\s/g, '') };
+  base64 = base64.replace(/\s/g, '');
+  try {
+    if (!Utilities.base64Decode(base64).length) throw new Error('empty');
+  } catch (e) {
+    return { success: false, message: 'La imagen no contiene datos válidos.' };
+  }
+  return { success: true, mimeType: mimeType, base64: base64 };
 }
 
 function parseGeminiJson_(response) {
