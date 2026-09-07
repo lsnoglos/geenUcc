@@ -1079,19 +1079,18 @@ const maxRetries = 1;
 
     const reader = new FileReader();
     reader.onload = (e) => {
-      const base64Data = e.target.result.split(",")[1];
-      llamarApiGemini(base64Data);
+      llamarApiGemini({ base64: e.target.result, mimeType: photoFiles[0].type });
     };
     reader.readAsDataURL(photoFiles[0]);
   }
 
-  function llamarApiGemini(base64Data) {
+  function llamarApiGemini(imageData) {
     if (!geminiRequestActive) return;
 
     google.script.run
       .withSuccessHandler(onGeminiSuccess)
       .withFailureHandler(onGeminiFailure)
-      .identificarPlanta(base64Data);
+      .identificarPlanta(imageData);
   }
 
   function onGeminiSuccess(response) {
@@ -1103,15 +1102,15 @@ const maxRetries = 1;
       modalBody.innerHTML = `
         <p>Esta es tu planta:</p>
         <div id="gemini-result-display">
-          <strong>Nombre Común:</strong> ${ultimaIdentificacion.nombreComun}<br>
-          <strong>Nombre Científico:</strong> ${ultimaIdentificacion.nombreCientifico}<br>
-          <strong>Familia:</strong> ${ultimaIdentificacion.familia}<br>
-          <strong>Uso Sugerido:</strong> ${ultimaIdentificacion.uso}
+          <strong>Nombre Común:</strong> ${escapeHtml(ultimaIdentificacion.nombreComun)}<br>
+          <strong>Nombre Científico:</strong> ${escapeHtml(ultimaIdentificacion.nombreCientifico)}<br>
+          <strong>Familia:</strong> ${escapeHtml(ultimaIdentificacion.familia)}<br>
+          <strong>Uso Sugerido:</strong> ${escapeHtml(ultimaIdentificacion.uso)}
         </div>
       `;
       btnAceptar.disabled = false;
     } else {
-      onGeminiFailure({ message: "Estoy cansada jefe. Vuelve a intentarlo." });
+      onGeminiFailure({ message: response.message || "No fue posible identificar la planta con suficiente confianza." });
     }
   }
   
@@ -1123,11 +1122,11 @@ const maxRetries = 1;
       console.log(`Intento fallido. Reintentando (${retryCount}/${maxRetries})...`);
 
       const reader = new FileReader();
-      reader.onload = (e) => llamarApiGemini(e.target.result.split(",")[1]);
+      reader.onload = (e) => llamarApiGemini({ base64: e.target.result, mimeType: photoFiles[0].type });
       reader.readAsDataURL(photoFiles[0]);
     } else {
       modalTitle.textContent = "No pude leerla";
-      modalBody.innerHTML = `<p>No pude identificar esa planta.<br><strong>???:</strong> ${error.message}</p><p>Intenta tomar una foto mas clara. Sino, ingrésala manualmente.</p>`;
+      modalBody.innerHTML = `<p>${escapeHtml(error.message || 'No pude identificar esa planta.')}<br>Intenta tomar una foto más clara o ingrésala manualmente.</p>`;
     }
   }
 
@@ -1144,6 +1143,12 @@ const maxRetries = 1;
   function cerrarModal() {
     geminiRequestActive = false;
     modal.classList.remove('active');
+  }
+
+  function escapeHtml(value) {
+    const div = document.createElement('div');
+    div.textContent = value == null ? '' : String(value);
+    return div.innerHTML;
   }
 
   btnIdentificar.addEventListener('click', identificar);
