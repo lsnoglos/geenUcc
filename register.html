@@ -655,7 +655,7 @@
       <button type="submit" id="submitBtn">Registrar Planta</button>
       <div id="status"></div>
     </form>
-    <section class="diagnostic-panel" aria-live="polite">
+    <section class="diagnostic-panel" aria-live="polite" hidden>
       <h3>Diagnóstico del proceso <small>(MODO DIAGNÓSTICO: no envía correo)</small></h3>
       <p>Usa exactamente una fotografía ya seleccionada. Esta prueba crea un registro y archivos <strong>TEST_DIAGNOSTICO</strong> separados.</p>
       <button type="button" id="diagnosticBtn">🧪 Ejecutar prueba de diagnóstico</button>
@@ -690,6 +690,9 @@
   <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js">
   </script>
   <script>
+    const SHOW_DIAGNOSTICS = false;
+    document.querySelector('.diagnostic-panel').hidden = !SHOW_DIAGNOSTICS;
+
     window.addEventListener('load', function() {
     const statusEl = document.getElementById('location-status');
     const latInput = document.getElementById('latitud');
@@ -1001,8 +1004,10 @@ function handleFiles(event) {
       }).withFailureHandler(error => diagnosticStop(4, error)).diagnosticRegisterPlantData();
     }).catch(error => diagnosticStop(2, error));
   }
-  document.getElementById('diagnosticBtn').addEventListener('click', () => runDiagnostic(false));
-  document.getElementById('diagnosticPrivateBtn').addEventListener('click', () => runDiagnostic(true));
+  if (SHOW_DIAGNOSTICS) {
+    document.getElementById('diagnosticBtn').addEventListener('click', () => runDiagnostic(false));
+    document.getElementById('diagnosticPrivateBtn').addEventListener('click', () => runDiagnostic(true));
+  }
 
   document.getElementById('plantForm').addEventListener('submit', function(e) {
     e.preventDefault();

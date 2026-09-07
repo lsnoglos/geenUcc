@@ -450,16 +450,24 @@ function savePlantFiles(plantId, qrBase64, imagesData) {
     // operation fails, files created by this invocation are removed below.
     let imageURLs = [];
     imageBlobs.forEach(function(blob) {
-      const newFile = plantFolder.createFile(blob).setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      const newFile = plantFolder.createFile(blob);
+      if (!newFile) {
+        throw new Error('DriveApp.createFile() no devolvió un archivo de fotografía.');
+      }
       createdFiles.push(newFile);
+      newFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
       const imageUrl = 'https://drive.google.com/uc?export=view&id=' + newFile.getId();
       if (!isHttpUrl_(imageUrl)) throw new Error('Drive devolvió una URL de imagen inválida.');
       imageURLs.push(imageUrl);
     });
 
     qrBlob.setName('qr_' + plantId + '.png');
-    const qrFile = plantFolder.createFile(qrBlob).setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    const qrFile = plantFolder.createFile(qrBlob);
+    if (!qrFile) {
+      throw new Error('DriveApp.createFile() no devolvió un archivo QR.');
+    }
     createdFiles.push(qrFile);
+    qrFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     const qrUrl = qrFile.getUrl();
     if (!isHttpUrl_(qrUrl)) throw new Error('Drive devolvió una URL de QR inválida.');
     Logger.log('savePlantFiles: plantId=%s, createdFiles=%s, qrId=%s, qrUrl=%s', plantId, createdFiles.length, qrFile.getId(), qrUrl);
