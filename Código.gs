@@ -673,9 +673,15 @@ function isHttpUrl_(value) {
   return typeof value === 'string' && /^https?:\/\/[^\s]+$/i.test(value);
 }
 
-function identificarPlanta(imageInput) {
-  const image = getGeminiImageInput_(imageInput);
-  if (!image.success) return image;
+function identificarPlanta(imageInput, diagnosticTrace) {
+  const trace = diagnosticTrace || null;
+  diagnosticTraceEvent_(trace, 'image_input', 'running', 'Validando la imagen con getGeminiImageInput_().');
+  const image = getGeminiImageInput_(imageInput, trace);
+  if (!image.success) {
+    diagnosticTraceEvent_(trace, 'image_input', 'error', image.message);
+    return image;
+  }
+  diagnosticTraceEvent_(trace, 'image_input', 'success', 'Imagen válida: ' + image.mimeType + ', ' + image.bytes + ' bytes.');
 
   const payload = {
     contents: [{ parts: [
@@ -684,19 +690,36 @@ function identificarPlanta(imageInput) {
     ] }],
     generationConfig: { responseMimeType: 'application/json', responseJsonSchema: plantIdentificationSchema_() }
   };
-  const result = callGemini_(payload, 'identificación');
+  diagnosticTraceEvent_(trace, 'gemini_call', 'running', 'Enviando la imagen a callGemini_().');
+  const result = callGemini_(payload, 'identificación', trace);
   if (!result.success) return result;
 
-  const data = parseGeminiJson_(result.response);
+  const data = parseGeminiJson_(result.response, trace);
   if (!data || data.identificado !== true || !isNonEmptyString_(data.nombreComun) ||
       !isNonEmptyString_(data.nombreCientifico) || !isNonEmptyString_(data.familia)) {
-    return { success: false, message: 'No fue posible identificar la planta con suficiente confianza.' };
+    const message = 'No fue posible identificar la planta con suficiente confianza.';
+    diagnosticTraceEvent_(trace, 'parsed_json', 'error', message);
+    return { success: false, message: message };
   }
-  return { success: true, data: {
+  const plantData = {
     nombreComun: data.nombreComun.trim(), nombreCientifico: data.nombreCientifico.trim(),
     familia: data.familia.trim(), uso: isNonEmptyString_(data.uso) ? data.uso.trim() : '',
     confidence: typeof data.confidence === 'number' ? data.confidence : undefined
-  } };
+  };
+  diagnosticTraceEvent_(trace, 'parsed_json', 'success', 'JSON de identificación interpretado correctamente.');
+  diagnosticTraceEvent_(trace, 'plant_data', 'success', 'Datos de planta encontrados.');
+  return { success: true, data: plantData };
+}
+
+/** Herramienta de prueba aislada: no registra plantas ni escribe en Drive o Sheets. */
+function diagnosticarIdentificacionIA(imageInput) {
+  const trace = [];
+  const result = identificarPlanta(imageInput, trace);
+  return { success: result.success, message: result.message || '', data: result.data || null, trace: trace };
+}
+
+function diagnosticTraceEvent_(trace, step, status, details) {
+  if (Array.isArray(trace)) trace.push({ step: step, status: status, details: String(details || '') });
 }
 
 function getMorePlantInfo(plantInfo) {
@@ -726,10 +749,11 @@ Usa la búsqueda para sustentar las afirmaciones. En presenciaNicaragua indica s
   } };
 }
 
-function callGemini_(payload, operation) {
+function callGemini_(payload, operation, diagnosticTrace) {
   const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
   if (!apiKey) {
     Logger.log('Gemini ' + operation + ': falta la propiedad GEMINI_API_KEY.');
+    diagnosticTraceEvent_(diagnosticTrace, 'gemini_call', 'error', 'El servicio de IA no está configurado.');
     return { success: false, message: 'El servicio de inteligencia artificial no está configurado.' };
   }
   try {
@@ -739,15 +763,19 @@ function callGemini_(payload, operation) {
     });
     const status = response.getResponseCode();
     const body = response.getContentText();
+    diagnosticTraceEvent_(diagnosticTrace, 'http_status', status >= 200 && status < 300 ? 'success' : 'error', 'Código HTTP: ' + status + '.');
+    diagnosticTraceEvent_(diagnosticTrace, 'gemini_response', status >= 200 && status < 300 ? 'success' : 'error', 'Respuesta disponible: ' + safeDiagnosticResponse_(body));
     if (status < 200 || status >= 300) return geminiHttpError_(status, body, operation);
     let parsed;
     try { parsed = JSON.parse(body); } catch (e) {
       Logger.log('Gemini ' + operation + ': respuesta no JSON.');
+      diagnosticTraceEvent_(diagnosticTrace, 'gemini_response', 'error', 'La respuesta de Gemini no es JSON válido.');
       return { success: false, message: 'El servicio devolvió una respuesta inválida. Inténtalo nuevamente.' };
     }
     return { success: true, response: parsed };
   } catch (e) {
     Logger.log('Gemini ' + operation + ': ' + e);
+    diagnosticTraceEvent_(diagnosticTrace, 'gemini_call', 'error', 'Error al llamar a Gemini: ' + e.message);
     return { success: false, message: 'No fue posible consultar la información de la planta en este momento. Inténtalo nuevamente.' };
   }
 }
@@ -762,7 +790,7 @@ function geminiHttpError_(status, body, operation) {
   return { success: false, message: 'No fue posible consultar la información de la planta en este momento. Inténtalo nuevamente.' };
 }
 
-function getGeminiImageInput_(input) {
+function getGeminiImageInput_(input, diagnosticTrace) {
   const raw = typeof input === 'string' ? { base64: input } : (input || {});
   let base64 = raw.base64 || raw.data || '';
   let mimeType = raw.mimeType || raw.type || '';
@@ -778,16 +806,24 @@ function getGeminiImageInput_(input) {
   } catch (e) {
     return { success: false, message: 'La imagen no contiene datos válidos.' };
   }
-  return { success: true, mimeType: mimeType, base64: base64 };
+  let bytes;
+  try { bytes = Utilities.base64Decode(base64).length; } catch (e) { bytes = 0; }
+  diagnosticTraceEvent_(diagnosticTrace, 'base64_server', 'success', 'Base64 válido y decodificable (' + bytes + ' bytes).');
+  return { success: true, mimeType: mimeType, base64: base64, bytes: bytes };
 }
 
-function parseGeminiJson_(response) {
+function parseGeminiJson_(response, diagnosticTrace) {
   const candidates = response && response.candidates;
   const parts = candidates && candidates[0] && candidates[0].content && candidates[0].content.parts;
   const text = parts && parts.map(function(part) { return part && part.text || ''; }).join('');
-  if (!text) { Logger.log('Gemini: respuesta vacía o sin contenido utilizable.'); return null; }
+  if (!text) { Logger.log('Gemini: respuesta vacía o sin contenido utilizable.'); diagnosticTraceEvent_(diagnosticTrace, 'response_text', 'error', 'Gemini no devolvió texto utilizable.'); return null; }
+  diagnosticTraceEvent_(diagnosticTrace, 'response_text', 'success', 'Texto/JSON extraído: ' + safeDiagnosticResponse_(text));
   try { return JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '').trim()); }
-  catch (e) { Logger.log('Gemini: JSON de modelo inválido.'); return null; }
+  catch (e) { Logger.log('Gemini: JSON de modelo inválido.'); diagnosticTraceEvent_(diagnosticTrace, 'parsed_json', 'error', 'No se pudo interpretar el JSON: ' + e.message); return null; }
+}
+
+function safeDiagnosticResponse_(value) {
+  return String(value || '').replace(/AIza[\w-]+/g, '[API_KEY_OCULTA]').substring(0, 2000);
 }
 
 function plantIdentificationSchema_() { return { type: 'object', properties: { identificado: { type: 'boolean' }, nombreComun: { type: 'string' }, nombreCientifico: { type: 'string' }, familia: { type: 'string' }, uso: { type: 'string' }, confidence: { type: 'number' } }, required: ['identificado'] }; }

@@ -318,6 +318,12 @@
     .diagnostic-steps .success { color: #167a2d; }
     .diagnostic-steps .error { color: #b00020; font-weight: bold; }
     .diagnostic-result { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .85em; }
+    .diagnostic-legacy { display: none; }
+    .ai-diagnostic-section { margin-top: 18px; padding-top: 16px; border-top: 1px solid #ead7b3; }
+    .ai-diagnostic-section h4 { margin: 0 0 8px; color: #704400; }
+    .ai-diagnostic-section input[type="file"] { display: block; width: 100%; margin: 10px 0; }
+    .ai-diagnostic-section button { background: #3a503e; }
+    .ai-diagnostic-result { margin-top: 12px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .85em; }
 
     #status {
       margin-top: 20px;
@@ -658,10 +664,20 @@
     <section class="diagnostic-panel" aria-live="polite">
       <h3>Diagnóstico del proceso <small>(MODO DIAGNÓSTICO: no envía correo)</small></h3>
       <p>Usa exactamente una fotografía ya seleccionada. Esta prueba crea un registro y archivos <strong>TEST_DIAGNOSTICO</strong> separados.</p>
-      <button type="button" id="diagnosticBtn">🧪 Ejecutar prueba de diagnóstico</button>
-      <button type="button" id="diagnosticPrivateBtn">🔒 Ejecutar prueba privada (sin setSharing)</button>
-      <ul id="diagnosticSteps" class="diagnostic-steps"></ul>
-      <div id="diagnosticResult" class="diagnostic-result"></div>
+      <div class="diagnostic-legacy" aria-hidden="true">
+        <button type="button" id="diagnosticBtn">🧪 Ejecutar prueba de diagnóstico</button>
+        <button type="button" id="diagnosticPrivateBtn">🔒 Ejecutar prueba privada (sin setSharing)</button>
+        <ul id="diagnosticSteps" class="diagnostic-steps"></ul>
+        <div id="diagnosticResult" class="diagnostic-result"></div>
+      </div>
+      <section class="ai-diagnostic-section" aria-labelledby="ai-diagnostic-title">
+        <h4 id="ai-diagnostic-title">DIAGNÓSTICO IA</h4>
+        <label for="ai-diagnostic-photo">Fotografía de la planta para la prueba</label>
+        <input type="file" id="ai-diagnostic-photo" accept="image/jpeg,image/png,image/webp,image/gif">
+        <button type="button" id="aiDiagnosticBtn">Ejecutar diagnóstico IA</button>
+        <ul id="aiDiagnosticSteps" class="diagnostic-steps"></ul>
+        <div id="aiDiagnosticResult" class="ai-diagnostic-result"></div>
+      </section>
     </section>
     <!-- </div> -->
   </div>
@@ -1003,6 +1019,94 @@ function handleFiles(event) {
   }
   document.getElementById('diagnosticBtn').addEventListener('click', () => runDiagnostic(false));
   document.getElementById('diagnosticPrivateBtn').addEventListener('click', () => runDiagnostic(true));
+
+
+  // DIAGNÓSTICO IA: prueba aislada; no llama al registro, Drive, QR ni Sheets.
+  const aiDiagnosticSteps = [
+    ['1', 'Fotografía recibida correctamente'], ['2', 'Tipo MIME y tamaño de la fotografía'],
+    ['3', 'Conversión de la fotografía a Base64'], ['4', 'Validación de que el Base64 es válido'],
+    ['5', 'Envío a identificarPlanta() / getGeminiImageInput_()'], ['6', 'Llamada a Gemini mediante callGemini_()'],
+    ['7', 'Código HTTP de respuesta'], ['8', 'Respuesta recibida de Gemini'],
+    ['9', 'Extracción del texto/JSON de la respuesta'], ['10', 'JSON interpretado correctamente mediante parseGeminiJson_()'],
+    ['11', 'Datos de planta encontrados'], ['12', 'Resultado final de la identificación']
+  ];
+  const aiDiagnosticNames = Object.fromEntries(aiDiagnosticSteps);
+  function initAiDiagnostic() {
+    document.getElementById('aiDiagnosticSteps').innerHTML = aiDiagnosticSteps.map(([step, name]) => `<li id="ai-diagnostic-step-${step}">[ ] ${step}. ${name}</li>`).join('');
+    document.getElementById('aiDiagnosticResult').textContent = '';
+  }
+  function setAiDiagnosticStep(step, status, details) {
+    const item = document.getElementById('ai-diagnostic-step-' + step); if (!item) return;
+    const mark = status === 'success' ? '✓ CORRECTO' : status === 'error' ? '✗ ERROR' : '⏳ EJECUTANDO';
+    item.className = status;
+    item.textContent = `${mark} ${step}. ${aiDiagnosticNames[step]}${details ? ' — ' + details : ''}`;
+  }
+  function stopAiDiagnostic(step, error, details) {
+    const message = error && (error.message || String(error)) || 'Error desconocido.';
+    setAiDiagnosticStep(step, 'error', message);
+    document.getElementById('aiDiagnosticResult').textContent = `✗ DIAGNÓSTICO IA DETENIDO EN EL PASO ${step}\nError: ${message}${details ? '\nRespuesta o detalle disponible: ' + details : ''}`;
+    document.getElementById('aiDiagnosticBtn').disabled = false;
+  }
+  function readAiDiagnosticPhoto(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(reader.error || new Error('No se pudo leer la fotografía.'));
+      reader.onload = () => {
+        const dataUrl = String(reader.result || '');
+        const match = /^data:([^;,]+);base64,([A-Za-z0-9+/=\s]+)$/i.exec(dataUrl);
+        if (!match) return reject(new Error('La conversión no produjo un Data URL Base64 válido.'));
+        resolve({ name: file.name || 'foto_diagnostico_ia', mimeType: match[1], base64: match[2].replace(/\s/g, '') });
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+  function applyAiServerTrace(trace) {
+    const mapping = { image_input: '5', gemini_call: '6', http_status: '7', gemini_response: '8', response_text: '9', parsed_json: '10', plant_data: '11' };
+    (trace || []).forEach(event => {
+      const step = mapping[event.step];
+      if (step) setAiDiagnosticStep(step, event.status, event.details);
+    });
+  }
+  function runAiDiagnostic() {
+    initAiDiagnostic();
+    const button = document.getElementById('aiDiagnosticBtn'); const input = document.getElementById('ai-diagnostic-photo');
+    button.disabled = true;
+    const file = input.files && input.files[0];
+    if (!file) return stopAiDiagnostic('1', new Error('Seleccione una fotografía de planta para iniciar la prueba.'));
+    setAiDiagnosticStep('1', 'success', `Nombre=${file.name || '(sin nombre)'}`);
+    setAiDiagnosticStep('2', 'running');
+    if (!/^image\/(jpeg|png|webp|gif)$/i.test(file.type || '')) return stopAiDiagnostic('2', new Error('Tipo MIME no compatible: ' + (file.type || '(vacío)')));
+    if (!file.size) return stopAiDiagnostic('2', new Error('La fotografía está vacía.'));
+    setAiDiagnosticStep('2', 'success', `MIME=${file.type}; tamaño=${file.size} bytes`);
+    setAiDiagnosticStep('3', 'running');
+    readAiDiagnosticPhoto(file).then(imageData => {
+      setAiDiagnosticStep('3', 'success', `Base64 generado: ${imageData.base64.length} caracteres`);
+      setAiDiagnosticStep('4', 'running');
+      try {
+        if (!/^[A-Za-z0-9+/]+={0,2}$/.test(imageData.base64) || imageData.base64.length % 4 === 1 || !atob(imageData.base64).length) throw new Error('El contenido no se puede decodificar.');
+        setAiDiagnosticStep('4', 'success', 'Base64 válido y decodificable en el navegador.');
+      } catch (error) { stopAiDiagnostic('4', error); return; }
+      setAiDiagnosticStep('5', 'running');
+      setAiDiagnosticStep('6', 'running');
+      google.script.run.withSuccessHandler(response => {
+        applyAiServerTrace(response && response.trace);
+        if (!response || !response.success) {
+          const trace = response && response.trace || [];
+          const failure = trace.filter(event => event.status === 'error').pop();
+          const step = failure && ({ image_input: '5', gemini_call: '6', http_status: '7', gemini_response: '8', response_text: '9', parsed_json: '10', plant_data: '11' })[failure.step] || '12';
+          stopAiDiagnostic(step, new Error(response && response.message || 'La función de diagnóstico no devolvió un resultado válido.'), failure && failure.details);
+          return;
+        }
+        const data = response.data || {};
+        setAiDiagnosticStep('11', 'success', `nombre común=${data.nombreComun}; nombre científico=${data.nombreCientifico}; familia=${data.familia}; uso=${data.uso || '(no devuelto)'}; confianza=${typeof data.confidence === 'number' ? data.confidence : '(no devuelta)'}`);
+        setAiDiagnosticStep('12', 'success', 'Identificación finalizada correctamente.');
+        document.getElementById('aiDiagnosticResult').textContent = `✓ DIAGNÓSTICO IA COMPLETADO\n\nNombre común: ${data.nombreComun}\nNombre científico: ${data.nombreCientifico}\nFamilia: ${data.familia}\nUso: ${data.uso || 'No devuelto'}\nConfianza: ${typeof data.confidence === 'number' ? data.confidence : 'No devuelta'}\n\nPrueba aislada: no se registró ninguna planta ni se guardaron fotografías o QR.`;
+        button.disabled = false;
+      }).withFailureHandler(error => stopAiDiagnostic('6', error, 'La llamada google.script.run falló antes de recibir una respuesta de Gemini.'))
+        .diagnosticarIdentificacionIA(imageData);
+    }).catch(error => stopAiDiagnostic('3', error));
+  }
+  document.getElementById('aiDiagnosticBtn').addEventListener('click', runAiDiagnostic);
 
   document.getElementById('plantForm').addEventListener('submit', function(e) {
     e.preventDefault();
