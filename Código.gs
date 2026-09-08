@@ -444,21 +444,23 @@ function savePlantFiles(plantId, qrBase64, imagesData) {
 
     const rootFolder = DriveApp.getFolderById(FOLDER_ID);
     const userFolder = getOrCreateFolder(rootFolder, userEmail);
-    const plantFolder = getOrCreateFolder(userFolder, plantName);
+    // Each registration owns a separate plant folder, even when another
+    // registration has the same scientific name.
+    const plantFolder = userFolder.createFolder(plantName);
 
     // All inputs are valid before the first file is created. If a later Drive/Sheets
     // operation fails, files created by this invocation are removed below.
     let imageURLs = [];
     imageBlobs.forEach(function(blob) {
-      const newFile = plantFolder.createFile(blob).setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      const newFile = plantFolder.createFile(blob);
       createdFiles.push(newFile);
-      const imageUrl = 'https://drive.google.com/uc?export=view&id=' + newFile.getId();
+      const imageUrl = newFile.getUrl();
       if (!isHttpUrl_(imageUrl)) throw new Error('Drive devolvió una URL de imagen inválida.');
       imageURLs.push(imageUrl);
     });
 
     qrBlob.setName('qr_' + plantId + '.png');
-    const qrFile = plantFolder.createFile(qrBlob).setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    const qrFile = plantFolder.createFile(qrBlob);
     createdFiles.push(qrFile);
     const qrUrl = qrFile.getUrl();
     if (!isHttpUrl_(qrUrl)) throw new Error('Drive devolvió una URL de QR inválida.');
