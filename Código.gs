@@ -330,73 +330,6 @@ function getOrCreateFolder(parentFolder, folderName) {
   return folders.hasNext() ? folders.next() : parentFolder.createFolder(folderName);
 }
 
-function getOrCreateFolderWithStatus_(parentFolder, folderName) {
-  const folders = parentFolder.getFoldersByName(folderName);
-  if (folders.hasNext()) return { folder: folders.next(), created: false };
-  return { folder: parentFolder.createFolder(folderName), created: true };
-}
-
-/**
- * El único mecanismo de creación de archivos Drive usado por producción y 17A/17B.
- * Cada operación de Drive se etiqueta para que el error indique exactamente qué falló.
- */
-function saveFilesUsingWorkingDriveProcess_(plantFolder, imageBlobs, qrBlob, options) {
-  options = options || {};
-  const shareFiles = options.shareFiles !== false;
-  const createdFiles = [];
-  const imageFiles = [];
-
-  function run_(operation, callback) {
-    if (typeof options.beforeOperation === 'function') options.beforeOperation(operation);
-    try {
-      const value = callback();
-      if (!value) throw new Error('DriveApp no devolvió un resultado.');
-      return value;
-    } catch (error) {
-      throw new Error(operation + ' falló: ' + (error && error.message || error));
-    }
-  }
-
-  try {
-    imageBlobs.forEach(function(blob, index) {
-      const photoNumber = index + 1;
-      const file = run_('createFile fotografía ' + photoNumber, function() {
-        return plantFolder.createFile(blob);
-      });
-      createdFiles.push(file);
-      if (shareFiles) {
-        run_('setSharing fotografía ' + photoNumber, function() {
-          file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-          return true;
-        });
-      }
-      const id = run_('obtener ID fotografía ' + photoNumber, function() { return file.getId(); });
-      const url = run_('obtener URL fotografía ' + photoNumber, function() { return file.getUrl(); });
-      if (!isHttpUrl_(url)) throw new Error('obtener URL fotografía ' + photoNumber + ' falló: Drive devolvió una URL inválida.');
-      imageFiles.push({ id: id, url: url, file: file });
-    });
-
-    const qrFile = run_('createFile QR', function() { return plantFolder.createFile(qrBlob); });
-    createdFiles.push(qrFile);
-    if (shareFiles) {
-      run_('setSharing QR', function() {
-        qrFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-        return true;
-      });
-    }
-    const qrId = run_('obtener ID QR', function() { return qrFile.getId(); });
-    const qrUrl = run_('obtener URL QR', function() { return qrFile.getUrl(); });
-    if (!isHttpUrl_(qrUrl)) throw new Error('obtener URL QR falló: Drive devolvió una URL inválida.');
-    return { imageFiles: imageFiles, imageUrls: imageFiles.map(function(item) { return item.url; }), qrFile: qrFile, qrId: qrId, qrUrl: qrUrl, createdFiles: createdFiles };
-  } catch (error) {
-    // The caller also performs this cleanup, but the helper must be safe when used alone.
-    createdFiles.forEach(function(file) {
-      try { file.setTrashed(true); } catch (cleanupError) { Logger.log('No se pudo revertir archivo Drive: %s', cleanupError); }
-    });
-    throw error;
-  }
-}
-
 function generatePlantId(name) {
   if (!name) return '';
   let id = name.toLowerCase();
@@ -477,14 +410,10 @@ function getDefaultLogoBase64() {
 function savePlantFiles(plantId, qrBase64, imagesData) {
   const createdFiles = [];
   let sheetUpdate = null;
-  let createdPlantFolder = null;
-  let createdCoordinatorFolder = null;
-  let operation = 'validar plantId';
   try {
     if (!isNonEmptyString_(plantId)) throw new Error('No se recibió un ID de planta válido.');
     if (!Array.isArray(imagesData)) throw new Error('Las fotografías deben enviarse como una lista.');
 
-    operation = 'localizar fila real en Sheets';
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     const plantSheet = ss.getSheetByName(PLANTS_DATA_SHEET_NAME);
     if (!plantSheet) throw new Error('No se encontró la hoja de plantas.');
@@ -508,33 +437,32 @@ function savePlantFiles(plantId, qrBase64, imagesData) {
     // Validate and decode every payload before Drive is changed. registrado_por is the
     // coordinator/owner selected by registerPlantData; colaborador is intentionally not used.
     const imageBlobs = imagesData.map(function(fileData, index) {
-      operation = 'convertir imagen Base64 a Blob (fotografía ' + (index + 1) + ')';
       return dataUrlToBlob_(fileData, 'fotografía ' + (index + 1), false);
     });
-    operation = 'convertir QR Base64 a Blob';
     const qrBlob = dataUrlToBlob_(qrBase64, 'código QR', true);
     Logger.log('savePlantFiles: plantId=%s, images=%s, qrExists=%s, qrMime=%s, qrBytes=%s', plantId, imageBlobs.length, !!qrBase64, qrBlob.getContentType(), qrBlob.getBytes().length);
 
-    operation = 'obtener carpeta raíz';
     const rootFolder = DriveApp.getFolderById(FOLDER_ID);
-    operation = 'buscar/crear carpeta coordinador';
-    const coordinatorFolderResult = getOrCreateFolderWithStatus_(rootFolder, userEmail);
-    const coordinatorFolder = coordinatorFolderResult.folder;
-    if (coordinatorFolderResult.created) createdCoordinatorFolder = coordinatorFolder;
-    // Cada registro crea su propia carpeta, incluso cuando coincida el nombre científico.
-    operation = 'crear nueva carpeta planta';
-    const plantFolder = coordinatorFolder.createFolder(plantName);
-    createdPlantFolder = plantFolder;
+    const userFolder = getOrCreateFolder(rootFolder, userEmail);
+    const plantFolder = getOrCreateFolder(userFolder, plantName);
 
     // All inputs are valid before the first file is created. If a later Drive/Sheets
     // operation fails, files created by this invocation are removed below.
+    let imageURLs = [];
+    imageBlobs.forEach(function(blob) {
+      const newFile = plantFolder.createFile(blob).setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      createdFiles.push(newFile);
+      const imageUrl = 'https://drive.google.com/uc?export=view&id=' + newFile.getId();
+      if (!isHttpUrl_(imageUrl)) throw new Error('Drive devolvió una URL de imagen inválida.');
+      imageURLs.push(imageUrl);
+    });
+
     qrBlob.setName('qr_' + plantId + '.png');
-    operation = 'guardar fotografías y QR mediante proceso Drive 17A/17B';
-    const driveFiles = saveFilesUsingWorkingDriveProcess_(plantFolder, imageBlobs, qrBlob);
-    Array.prototype.push.apply(createdFiles, driveFiles.createdFiles);
-    const imageURLs = driveFiles.imageUrls;
-    const qrUrl = driveFiles.qrUrl;
-    Logger.log('savePlantFiles: plantId=%s, createdFiles=%s, qrId=%s, qrUrl=%s', plantId, createdFiles.length, driveFiles.qrId, qrUrl);
+    const qrFile = plantFolder.createFile(qrBlob).setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    createdFiles.push(qrFile);
+    const qrUrl = qrFile.getUrl();
+    if (!isHttpUrl_(qrUrl)) throw new Error('Drive devolvió una URL de QR inválida.');
+    Logger.log('savePlantFiles: plantId=%s, createdFiles=%s, qrId=%s, qrUrl=%s', plantId, createdFiles.length, qrFile.getId(), qrUrl);
 
     // Actualizar hoja de cálculo
     const sheetRowIndex = rowIdx + 2;
@@ -542,14 +470,12 @@ function savePlantFiles(plantId, qrBase64, imagesData) {
       sheet: plantSheet, row: sheetRowIndex, qrColumn: qrColIdx + 1, imagesColumn: imagesColIdx + 1,
       previousQr: plantRow[qrColIdx], previousImages: plantRow[imagesColIdx]
     };
-    operation = 'actualizar Sheets';
     plantSheet.getRange(sheetRowIndex, qrColIdx + 1).setValue(qrUrl);
     plantSheet.getRange(sheetRowIndex, imagesColIdx + 1).setValue(JSON.stringify(imageURLs));
 
     // A mail quota failure must not undo a complete Drive/Sheets operation.
     let emailWarning = '';
     try {
-      operation = 'enviar correo';
       MailApp.sendEmail({
         to: userEmail,
         subject: `Código QR para la planta: ${comunPlantName}`,
@@ -557,7 +483,7 @@ function savePlantFiles(plantId, qrBase64, imagesData) {
         attachments: [qrBlob]
       });
     } catch (mailError) {
-      emailWarning = 'Los archivos se guardaron, pero enviar correo falló: ' + (mailError && mailError.message || mailError);
+      emailWarning = 'Los archivos se guardaron, pero no fue posible enviar el correo.';
       Logger.log('savePlantFiles: no se pudo enviar correo para plantId=%s: %s', plantId, mailError);
     }
 
@@ -575,13 +501,7 @@ function savePlantFiles(plantId, qrBase64, imagesData) {
     createdFiles.forEach(function(file) {
       try { file.setTrashed(true); } catch (cleanupError) { Logger.log('No se pudo revertir archivo %s: %s', file.getId(), cleanupError); }
     });
-    if (createdPlantFolder) {
-      try { createdPlantFolder.setTrashed(true); } catch (cleanupFolderError) { Logger.log('No se pudo revertir carpeta de planta %s: %s', createdPlantFolder.getId(), cleanupFolderError); }
-    }
-    if (createdCoordinatorFolder) {
-      try { createdCoordinatorFolder.setTrashed(true); } catch (cleanupFolderError) { Logger.log('No se pudo revertir carpeta de coordinador %s: %s', createdCoordinatorFolder.getId(), cleanupFolderError); }
-    }
-    return { success: false, message: 'Error al guardar archivos durante "' + operation + '": ' + error.toString() };
+    return { success: false, message: 'Error al guardar archivos: ' + error.toString() };
   }
 }
 
@@ -669,30 +589,29 @@ function diagnosticSavePlantFiles_(plantId, qrBase64, imagesData, testSetSharing
     currentStep = 15; const coordinatorFolder = getOrCreateFolder(root, result.coordinatorEmail); pass(15, 'Carpeta coordinador=' + coordinatorFolder.getName() + ', id=' + coordinatorFolder.getId());
     currentStep = 16; const folder = getOrCreateFolder(coordinatorFolder, result.plantName); result.folderName = folder.getName(); pass(16, 'Carpeta temporal=' + result.folderName + ', id=' + folder.getId());
     imageBlob.setName('DIAGNOSTICO_TEST_FOTO_' + new Date().getTime() + '_' + (image.name || 'foto'));
-    qrBlob.setName('DIAGNOSTICO_TEST_QR_' + new Date().getTime() + '.png');
-    // 17A/17B deliberately use the same helper as production, not a second DriveApp path.
-    currentStep = '17A'; log('17A', 'proceso común createFile/setSharing iniciado');
-    const driveFiles = saveFilesUsingWorkingDriveProcess_(folder, [imageBlob], qrBlob, {
-      shareFiles: testSetSharing,
-      beforeOperation: function(operation) {
-        if (operation === 'createFile fotografía 1') currentStep = '17A';
-        else if (operation === 'setSharing fotografía 1') currentStep = '17B';
-        else if (operation === 'obtener ID fotografía 1') currentStep = 18;
-        else if (operation === 'obtener URL fotografía 1') currentStep = 21;
-        else if (operation === 'createFile QR' || operation === 'setSharing QR') currentStep = 19;
-        else if (operation === 'obtener ID QR') currentStep = 20;
-        else if (operation === 'obtener URL QR') currentStep = 22;
+    currentStep = '17A'; log('17A', 'createFile iniciado'); const imageFile = folder.createFile(imageBlob);
+    if (!imageFile) throw new Error('DriveApp.createFile() devolvió un archivo de fotografía nulo.');
+    result.imageFileId = imageFile.getId(); result.imageUrl = imageFile.getUrl();
+    pass('17A', 'createFile completado; fileId=' + result.imageFileId + ', nombre=' + imageFile.getName() + ', MIME=' + imageFile.getMimeType() + ', tamaño=' + imageFile.getSize() + ', URL=' + result.imageUrl);
+    if (testSetSharing) {
+      currentStep = '17B'; log('17B', 'setSharing iniciado');
+      try {
+        imageFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+        pass('17B', 'setSharing completado');
+      } catch (sharingError) {
+        fail('17B', sharingError);
+        result.message = 'CREATEFILE OK — SETSHARING FALLÓ: ' + (sharingError.message || sharingError);
+        return result;
       }
-    });
-    const imageFile = driveFiles.imageFiles[0].file;
-    const qrFile = driveFiles.qrFile;
-    result.imageFileId = driveFiles.imageFiles[0].id; result.imageUrl = driveFiles.imageUrls[0];
-    pass('17A', 'createFile completado por proceso común; fileId=' + result.imageFileId + ', nombre=' + imageFile.getName() + ', MIME=' + imageFile.getMimeType() + ', tamaño=' + imageFile.getSize() + ', URL=' + result.imageUrl);
-    currentStep = '17B';
-    pass('17B', testSetSharing ? 'setSharing completado por proceso común' : 'No ejecutado por diseño: archivo privado.');
+    } else {
+      pass('17B', 'No ejecutado por diseño: archivo privado.');
+    }
     currentStep = 18; result.imageFileId = imageFile.getId(); const reloadedImageFile = result.imageFileId && DriveApp.getFileById(result.imageFileId); if (!reloadedImageFile) throw new Error('No se pudo volver a localizar el archivo de fotografía en Drive.'); const reloadedImageBlob = reloadedImageFile.getBlob(); if (!reloadedImageBlob) throw new Error('No se pudo leer el Blob de la fotografía privada mediante DriveApp.getFileById().'); pass(18, 'ID foto=' + result.imageFileId + '; DriveApp.getFileById().getBlob() OK, bytes=' + reloadedImageBlob.getBytes().length);
     currentStep = 21; result.imageUrl = imageFile.getUrl(); if (!isHttpUrl_(result.imageUrl)) throw new Error('Drive devolvió una URL de fotografía inválida: ' + result.imageUrl); pass(21, 'URL foto=' + result.imageUrl);
-    currentStep = 19; pass(19, 'Archivo QR creado por proceso común' + (testSetSharing ? ' y setSharing completado' : ' privado (setSharing no ejecutado)') + ': name=' + qrFile.getName() + ', mime=' + qrFile.getMimeType() + ', size=' + qrFile.getSize());
+    currentStep = 19; qrBlob.setName('DIAGNOSTICO_TEST_QR_' + new Date().getTime() + '.png'); const qrFile = folder.createFile(qrBlob);
+    if (!qrFile) throw new Error('DriveApp.createFile() devolvió un archivo QR nulo.');
+    if (testSetSharing) qrFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    pass(19, 'Archivo QR creado' + (testSetSharing ? ' y setSharing completado' : ' privado (setSharing no ejecutado)') + ': name=' + qrFile.getName() + ', mime=' + qrFile.getMimeType() + ', size=' + qrFile.getSize());
     currentStep = 20; result.qrFileId = qrFile.getId(); const reloadedQrFile = result.qrFileId && DriveApp.getFileById(result.qrFileId); if (!reloadedQrFile) throw new Error('No se pudo volver a localizar el archivo QR en Drive.'); pass(20, 'ID QR=' + result.qrFileId + '; DriveApp.getFileById() OK');
     currentStep = 22; result.qrUrl = qrFile.getUrl(); if (!isHttpUrl_(result.qrUrl)) throw new Error('Drive devolvió una URL de QR inválida: ' + result.qrUrl); pass(22, 'URL QR=' + result.qrUrl);
     currentStep = 23; const imageCell = sheet.getRange(result.sheetRow, imagesCol + 1); const imageValue = JSON.stringify([result.imageUrl]); imageCell.setValue(imageValue); SpreadsheetApp.flush(); const imageRead = imageCell.getValue(); if (imageRead !== imageValue) throw new Error('Verificación Sheets foto falló. Escrito=' + imageValue + ', leído=' + imageRead); pass(23, 'Fila=' + result.sheetRow + ', columna=' + (imagesCol + 1) + ', escrito/leído=' + imageRead);
@@ -1121,161 +1040,4 @@ function getAdminEmails() {
     Logger.log("Error al obtener emails de admin: " + e.toString());
     return [];
   }
-}
-
-/****************************************************************
- * DIAGNÓSTICOS TEMPORALES DEL SISTEMA
- * No llaman savePlantFiles(), identificarPlanta(), registerPlantData() ni MailApp.
- ****************************************************************/
-function diagnosticRealFolderDriveAccess(imageInput) {
-  const report = {
-    success: false,
-    operation: 'diagnosticRealFolderDriveAccess',
-    coordinatorEmail: '', rootFolderId: '', coordinatorFolderId: '', temporaryFolderId: '',
-    temporaryFolderName: '', photo: {}, qr: {}, operations: [], error: null
-  };
-  let currentOperation = 'preparación';
-  function technicalError_(error) {
-    return { message: error && error.message || String(error), toString: error && error.toString ? error.toString() : String(error), stack: error && error.stack || '' };
-  }
-  function runOperation_(target, name, fn) {
-    currentOperation = target + '.' + name;
-    try {
-      const value = fn();
-      report.operations.push({ target: target, operation: name, success: true, details: value == null ? '' : String(value) });
-      return value;
-    } catch (error) {
-      const details = technicalError_(error);
-      report.operations.push({ target: target, operation: name, success: false, details: details.message, error: details });
-      return null;
-    }
-  }
-  try {
-    // savePlantFiles() uses registrado_por as the coordinator. For an isolated
-    // diagnostic there is no plant row, so use the same owner value cached by checkUserAccess().
-    currentOperation = 'obtener coordinador actual';
-    report.coordinatorEmail = String(CacheService.getUserCache().get('currentAdmin') || '').trim();
-    if (!report.coordinatorEmail) throw new Error('No existe currentAdmin en User Cache. Inicie sesión nuevamente para cargar el coordinador actual.');
-
-    const image = getGeminiImageInput_(imageInput);
-    if (!image.success) throw new Error('Fotografía de diagnóstico inválida: ' + image.message);
-    const photoBlob = Utilities.newBlob(Utilities.base64Decode(image.base64), image.mimeType,
-      'DIAGNOSTICO_REAL_DRIVE_FOTO_' + new Date().getTime());
-    const qrBlob = Utilities.newBlob(Utilities.base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL7WAAAAABJRU5ErkJggg=='), 'image/png',
-      'DIAGNOSTICO_REAL_DRIVE_QR_' + new Date().getTime() + '.png');
-
-    currentOperation = 'DriveApp.getFolderById(FOLDER_ID)';
-    const rootFolder = DriveApp.getFolderById(FOLDER_ID);
-    report.rootFolderId = rootFolder.getId();
-    currentOperation = 'getOrCreateFolder(rootFolder, coordinatorEmail)';
-    const coordinatorFolder = getOrCreateFolder(rootFolder, report.coordinatorEmail);
-    report.coordinatorFolderId = coordinatorFolder.getId();
-    report.temporaryFolderName = 'DIAGNOSTICO_REAL_DRIVE_' + new Date().getTime();
-    currentOperation = 'crear carpeta temporal';
-    const temporaryFolder = coordinatorFolder.createFolder(report.temporaryFolderName);
-    report.temporaryFolderId = temporaryFolder.getId();
-
-    function diagnoseFile_(target, blob, result) {
-      const file = runOperation_(target, 'createFile', function() { return temporaryFolder.createFile(blob); });
-      if (!file) return;
-      result.created = true;
-      const fileId = runOperation_(target, 'getId', function() { return file.getId(); });
-      if (fileId) result.id = fileId;
-      const url = runOperation_(target, 'getUrl', function() { return file.getUrl(); });
-      if (url) result.url = url;
-      const reloaded = fileId && runOperation_(target, 'getFileById', function() { return DriveApp.getFileById(fileId).getId(); });
-      if (reloaded) result.reloadedId = reloaded;
-      const bytes = runOperation_(target, 'getBlob', function() { return file.getBlob().getBytes().length; });
-      if (bytes !== null && bytes !== undefined) result.blobBytes = bytes;
-      runOperation_(target, 'setSharing(ANYONE_WITH_LINK, VIEW)', function() {
-        file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-        return 'OK';
-      });
-      result.summary = {};
-      report.operations.filter(function(operation) { return operation.target === target; }).forEach(function(operation) {
-        result.summary[operation.operation] = operation.success ? 'OK' : 'ERROR: ' + operation.details;
-      });
-    }
-    diagnoseFile_('fotografía', photoBlob, report.photo);
-    diagnoseFile_('QR', qrBlob, report.qr);
-    report.success = report.operations.every(function(operation) { return operation.success; });
-    report.message = report.success ? 'Todas las operaciones Drive finalizaron correctamente.' : 'Una o más operaciones Drive fallaron; revise operations para el error técnico exacto.';
-  } catch (error) {
-    report.error = technicalError_(error);
-    report.message = 'Falló la preparación de la estructura real de Drive: ' + report.error.message;
-  }
-  Logger.log('[DIAGNOSTICO_REAL_DRIVE] ' + JSON.stringify(report));
-  return report;
-}
-
-function diagnosticGeminiIdentification(imageInput) {
-  const report = {
-    success: false, operation: 'diagnosticGeminiIdentification', apiKeyConfigured: false,
-    model: GEMINI_MODEL, mimeType: '', base64Length: 0, base64Decodable: false,
-    mimeSupported: false, structured: {}, freeForm: {}, error: null
-  };
-  function details_(response, operation) {
-    const status = response.getResponseCode();
-    const body = response.getContentText();
-    let parsed = null;
-    try { parsed = JSON.parse(body); } catch (ignore) {}
-    const candidate = parsed && parsed.candidates && parsed.candidates[0] || null;
-    const parts = candidate && candidate.content && candidate.content.parts || [];
-    const text = parts.map(function(part) { return part && part.text || ''; }).join('');
-    return {
-      operation: operation, httpStatus: status, response: parsed || body,
-      candidates: parsed && parsed.candidates || null, finishReason: candidate && candidate.finishReason || null,
-      modelVersion: parsed && parsed.modelVersion || null, text: text,
-      httpErrorMessage: status >= 200 && status < 300 ? '' : (parsed && parsed.error && parsed.error.message || body)
-    };
-  }
-  function call_(payload, operation) {
-    try {
-      const response = UrlFetchApp.fetch(GEMINI_API_BASE_URL + GEMINI_MODEL + ':generateContent', {
-        method: 'post', contentType: 'application/json', payload: JSON.stringify(payload),
-        headers: { 'x-goog-api-key': PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY') }, muteHttpExceptions: true
-      });
-      return details_(response, operation);
-    } catch (error) {
-      return { operation: operation, httpStatus: null, response: null, candidates: null, finishReason: null, modelVersion: null, text: '', error: error.message || String(error) };
-    }
-  }
-  try {
-    const raw = typeof imageInput === 'string' ? { base64: imageInput } : (imageInput || {});
-    let base64 = raw.base64 || raw.data || '';
-    let mimeType = raw.mimeType || raw.type || '';
-    const dataUrl = /^data:([^;,]+);base64,(.+)$/i.exec(base64);
-    if (dataUrl) { mimeType = mimeType || dataUrl[1]; base64 = dataUrl[2]; }
-    report.mimeType = String(mimeType).toLowerCase();
-    report.base64Length = String(base64).replace(/\s/g, '').length;
-    report.mimeSupported = /^image\/(jpeg|png|webp|gif)$/i.test(report.mimeType);
-    try { report.base64Decodable = Utilities.base64Decode(String(base64).replace(/\s/g, '')).length > 0; } catch (error) { report.base64DecodeError = error.message || String(error); }
-    report.apiKeyConfigured = !!PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
-    if (!report.apiKeyConfigured) throw new Error('GEMINI_API_KEY no está configurada (la clave no se muestra).');
-    if (!report.mimeSupported) throw new Error('MIME no compatible: ' + report.mimeType);
-    if (!report.base64Decodable) throw new Error('Base64 no se pudo decodificar.');
-    base64 = String(base64).replace(/\s/g, '');
-
-    const structuredPayload = { contents: [{ parts: [
-      { text: 'Analiza esta fotografía botánica. Identifica una especie SOLO si los rasgos visibles permiten una identificación razonable. Si no hay suficiente confianza, devuelve identificado:false. No adivines especies, usos medicinales ni toxicidad. El uso debe ser una descripción breve y prudente.' },
-      { inline_data: { mime_type: report.mimeType, data: base64 } }
-    ] }], generationConfig: { responseMimeType: 'application/json', responseJsonSchema: plantIdentificationSchema_() } };
-    report.structured = call_(structuredPayload, 'IDENTIFICACIÓN ESTRUCTURADA');
-    report.structured.parsedJson = parseGeminiJson_(report.structured.response);
-    const identified = report.structured.parsedJson || {};
-    report.structured.identificado = identified.identificado;
-    report.structured.nombreComun = identified.nombreComun;
-    report.structured.nombreCientifico = identified.nombreCientifico;
-    report.structured.familia = identified.familia;
-    report.structured.uso = identified.uso;
-    report.structured.confidence = identified.confidence;
-
-    const freePrompt = 'Analiza esta fotografía de una planta.\n\nIntenta identificarla usando los rasgos visibles.\n\nResponde en español.\n\nIndica:\n- nombre común\n- nombre científico\n- familia\n- nivel de confianza de 0 a 100\n- explicación breve de qué rasgos observaste\n\nSi no puedes identificar la especie con seguridad, indica las especies candidatas más probables y explica por qué.\n\nNo inventes información.';
-    report.freeForm = call_({ contents: [{ parts: [{ text: freePrompt }, { inline_data: { mime_type: report.mimeType, data: base64 } }] }] }, 'RESPUESTA LIBRE');
-    report.success = true;
-  } catch (error) {
-    report.error = { message: error.message || String(error), stack: error.stack || '' };
-  }
-  Logger.log('[DIAGNOSTICO_GEMINI] ' + JSON.stringify(report));
-  return report;
 }
