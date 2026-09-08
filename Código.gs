@@ -6,7 +6,7 @@ const APP_NAME = 'UNIVERSIDADES VERDES UCC';
 const DEFAULT_LOGO_ID = '1gahFroR2tOmSjlIzRy_qxXMbQdIpH79C';
 // Gemini is deliberately configured through Script Properties, never client-side.
 // Set GEMINI_API_KEY in Project Settings > Script properties before using these features.
-const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_MODEL = 'gemini-3.6-flash';
 const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models/';
 
 const HEADERS = {
