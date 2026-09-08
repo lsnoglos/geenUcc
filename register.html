@@ -850,7 +850,7 @@ function handleFiles(event) {
     }
   });
 
-  function generateStyledQR(url, logoBase64, callback) {
+  function generateStyledQR(url, logoBase64, commonName, scientificName, callback) {
     if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
       console.error('generateStyledQR recibió una URL pública inválida.');
       callback(null);
@@ -862,6 +862,11 @@ function handleFiles(event) {
     canvas.width = desiredResolution;
     canvas.height = desiredResolution;
     const ctx = canvas.getContext('2d');
+    const headerHeight = 200;
+    const cardCanvas = document.createElement('canvas');
+    cardCanvas.width = desiredResolution;
+    cardCanvas.height = desiredResolution + headerHeight;
+    const cardCtx = cardCanvas.getContext('2d');
     
     let logoImage = null;
     if (logoBase64) {
@@ -937,8 +942,26 @@ function handleFiles(event) {
       }
       
       try {
-        const qrBase64 = canvas.toDataURL('image/png');
-        console.log('QR generado:', { plantViewUrl: url, canvas: canvas.width + 'x' + canvas.height, exists: !!qrBase64, moduleCount: moduleCount, length: qrBase64.length, mime: qrBase64.split(';', 1)[0], prefix: qrBase64.substring(0, 32) + '...' });
+        cardCtx.fillStyle = '#F5FAF2';
+        cardCtx.fillRect(0, 0, cardCanvas.width, cardCanvas.height);
+
+        const drawFittedText = (text, maxWidth, fontSize, fontStyle, color, y) => {
+          let size = fontSize;
+          cardCtx.fillStyle = color;
+          cardCtx.textAlign = 'center';
+          do {
+            cardCtx.font = `${fontStyle} ${size}px sans-serif`;
+            size -= 1;
+          } while (size > 18 && cardCtx.measureText(text).width > maxWidth);
+          cardCtx.fillText(text, cardCanvas.width / 2, y);
+        };
+
+        drawFittedText(commonName || '', cardCanvas.width - 80, 38, '600', '#257732', 75);
+        drawFittedText(scientificName || '', cardCanvas.width - 80, 28, 'italic', '#3A503E', 125);
+        cardCtx.drawImage(canvas, 0, headerHeight);
+
+        const qrBase64 = cardCanvas.toDataURL('image/png');
+        console.log('QR generado:', { plantViewUrl: url, canvas: cardCanvas.width + 'x' + cardCanvas.height, exists: !!qrBase64, moduleCount: moduleCount, length: qrBase64.length, mime: qrBase64.split(';', 1)[0], prefix: qrBase64.substring(0, 32) + '...' });
         callback(qrBase64);
       } catch (error) {
         console.error('No se pudo exportar el QR:', error);
@@ -1000,7 +1023,7 @@ function handleFiles(event) {
         if (!registerResponse || !registerResponse.success) { diagnosticStop(4, new Error(registerResponse && registerResponse.message || 'registerPlantData no devolvió éxito.')); return; }
         setDiagnosticStep(4, 'success', 'Registro temporal creado.'); setDiagnosticStep(5, 'success', 'plantId=' + registerResponse.plantId); setDiagnosticStep(6, 'success', 'plantViewUrl=' + registerResponse.plantViewUrl);
         setDiagnosticStep(7, 'running');
-        generateStyledQR(registerResponse.plantViewUrl, null, qrBase64 => {
+        generateStyledQR(registerResponse.plantViewUrl, null, 'TEST_DIAGNOSTICO', 'TEST_DIAGNOSTICO', qrBase64 => {
           if (!isValidQrDataUrl(qrBase64)) { diagnosticStop(8, new Error('QR inválido: se esperaba data:image/png;base64,.')); return; }
           setDiagnosticStep(7, 'success', 'generateStyledQR ejecutado.'); setDiagnosticStep(8, 'success', `QR PNG generado; longitud=${qrBase64.length}; prefix=${qrBase64.substring(0, 32)}...`);
           console.log('[DIAGNOSTICO] Antes de google.script.run.diagnosticSavePlantFiles', { plantId: registerResponse.plantId, qrBase64Exists: !!qrBase64, qrBase64Length: qrBase64.length, imagesDataLength: 1, firstImage: { name: imageData.name, mimeType: imageData.mimeType, base64Length: imageData.base64.length } });
@@ -1148,7 +1171,7 @@ function handleFiles(event) {
           
           showLoader('Generando Código QR...');
           const continueProcess = (logoBase64) => {
-            generateStyledQR(dataResponse.plantViewUrl, logoBase64, (qrBase64) => {
+            generateStyledQR(dataResponse.plantViewUrl, logoBase64, formObject.nombre_comun, formObject.nombre_cientifico, (qrBase64) => {
               if (!isValidQrDataUrl(qrBase64)) {
                 hideLoader();
                 submitBtn.disabled = false;
