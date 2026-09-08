@@ -763,8 +763,11 @@ function callGemini_(payload, operation, diagnosticTrace) {
     });
     const status = response.getResponseCode();
     const body = response.getContentText();
-    diagnosticTraceEvent_(diagnosticTrace, 'http_status', status >= 200 && status < 300 ? 'success' : 'error', 'Código HTTP: ' + status + '.');
-    diagnosticTraceEvent_(diagnosticTrace, 'gemini_response', status >= 200 && status < 300 ? 'success' : 'error', 'Respuesta disponible: ' + safeDiagnosticResponse_(body));
+    const isSuccess = status >= 200 && status < 300;
+    const httpDetails = isSuccess ? 'Código HTTP: ' + status + '.' :
+      'Código HTTP: ' + status + '. Mensaje de Gemini: ' + geminiApiErrorMessage_(body);
+    diagnosticTraceEvent_(diagnosticTrace, 'http_status', isSuccess ? 'success' : 'error', httpDetails);
+    diagnosticTraceEvent_(diagnosticTrace, 'gemini_response', isSuccess ? 'success' : 'error', 'Respuesta disponible: ' + safeDiagnosticResponse_(body));
     if (status < 200 || status >= 300) return geminiHttpError_(status, body, operation);
     let parsed;
     try { parsed = JSON.parse(body); } catch (e) {
@@ -781,13 +784,18 @@ function callGemini_(payload, operation, diagnosticTrace) {
 }
 
 function geminiHttpError_(status, body, operation) {
-  let apiMessage = '';
-  try { apiMessage = JSON.parse(body).error.message || ''; } catch (e) { apiMessage = body.substring(0, 300); }
+  const apiMessage = geminiApiErrorMessage_(body);
   Logger.log('Gemini ' + operation + ' HTTP ' + status + ': ' + apiMessage);
   if (status === 401 || status === 403) return { success: false, message: 'No fue posible autenticar el servicio de inteligencia artificial.' };
   if (status === 404) return { success: false, message: 'El modelo de inteligencia artificial no está disponible en este momento.' };
   if (status === 429 || /RESOURCE_EXHAUSTED/i.test(apiMessage)) return { success: false, message: 'El servicio de inteligencia artificial alcanzó temporalmente su límite de uso. Inténtalo nuevamente más tarde.' };
   return { success: false, message: 'No fue posible consultar la información de la planta en este momento. Inténtalo nuevamente.' };
+}
+
+function geminiApiErrorMessage_(body) {
+  let apiMessage = '';
+  try { apiMessage = JSON.parse(body).error.message || ''; } catch (e) { apiMessage = String(body || '').substring(0, 300); }
+  return safeDiagnosticResponse_(apiMessage) || 'Sin mensaje de error proporcionado por Gemini.';
 }
 
 function getGeminiImageInput_(input, diagnosticTrace) {
