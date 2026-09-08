@@ -309,7 +309,7 @@
       cursor: not-allowed;
     }
 
-    .diagnostic-panel { margin-top: 20px; padding: 16px; border: 2px dashed #a96800; border-radius: 8px; background: #fff9ed; }
+    .diagnostic-panel { display: none; margin-top: 20px; padding: 16px; border: 2px dashed #a96800; border-radius: 8px; background: #fff9ed; }
     .diagnostic-panel h3 { margin-top: 0; color: #704400; }
     .diagnostic-panel button { width: 100%; padding: 12px; border: 0; border-radius: 6px; background: #8a5200; color: white; cursor: pointer; font-weight: bold; }
     .diagnostic-steps { list-style: none; padding: 0; margin: 14px 0; font-size: 0.9em; }
@@ -850,139 +850,100 @@ function handleFiles(event) {
     }
   });
 
-  // Genera una tarjeta imprimible: los textos y la decoración permanecen fuera
-  // del área blanca de seguridad del QR para no afectar su lectura.
-  function generateStyledQR(url, commonName, scientificName, logoBase64, callback) {
+  function generateStyledQR(url, logoBase64, callback) {
     if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
       console.error('generateStyledQR recibió una URL pública inválida.');
       callback(null);
       return;
     }
-
+    const desiredResolution = 1000; // Píxeles. Un buen punto de partida para impresión.
+                                    // Puedes probar con 1500 o 2000 si necesitas más.
     const canvas = document.createElement('canvas');
-    canvas.width = 1200;
-    canvas.height = 1600;
+    canvas.width = desiredResolution;
+    canvas.height = desiredResolution;
     const ctx = canvas.getContext('2d');
-    const displayCommonName = String(commonName || 'Planta registrada').trim();
-    const displayScientificName = String(scientificName || 'Nombre científico no disponible').trim();
+    
     let logoImage = null;
-
     if (logoBase64) {
       logoImage = new Image();
-      logoImage.onload = draw;
-      logoImage.onerror = function() {
-        console.warn('Logo UCC no disponible; se generará la tarjeta sin logo.');
-        logoImage = null;
-        draw();
+      // Ajuste para CORS si el logo no carga (a veces puede pasar con imágenes base64 si no son perfectas)
+      logoImage.crossOrigin = "Anonymous"; 
+      logoImage.onload = () => draw(false);
+      logoImage.onerror = () => { 
+        console.warn("Logo no cargó, dibujando QR sin él. Verifique el ID o permisos del logo."); 
+        draw(true); 
       };
       logoImage.src = logoBase64;
     } else {
-      draw();
+      draw(true); // Dibuja sin logo si no se proporcionó
     }
 
-    function drawWrappedText(text, x, y, maxWidth, lineHeight, maxLines) {
-      const words = text.split(/\s+/).filter(Boolean);
-      const lines = [];
-      let currentLine = '';
-      words.forEach(function(word) {
-        const candidate = currentLine ? currentLine + ' ' + word : word;
-        if (ctx.measureText(candidate).width <= maxWidth || !currentLine) {
-          currentLine = candidate;
-        } else if (lines.length < maxLines - 1) {
-          lines.push(currentLine);
-          currentLine = word;
-        } else {
-          currentLine = currentLine + ' ' + word;
-        }
-      });
-      if (currentLine) lines.push(currentLine);
-      const visibleLines = lines.slice(0, maxLines);
-      if (lines.length > maxLines) {
-        const last = visibleLines.length - 1;
-        while (ctx.measureText(visibleLines[last] + '…').width > maxWidth && visibleLines[last].length > 1) {
-          visibleLines[last] = visibleLines[last].slice(0, -1);
-        }
-        visibleLines[last] += '…';
-      }
-      visibleLines.forEach(function(line, index) {
-        ctx.fillText(line, x, y + index * lineHeight);
-      });
-      return visibleLines.length * lineHeight;
-    }
-
-    try {
-      // Fondo y acentos de la identidad visual UCC.
-      ctx.fillStyle = '#FFFFFF';
+    function draw(logoFailed) {
+      ctx.fillStyle = "#FFFFFF";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = '#C8102E';
-      ctx.fillRect(0, 0, canvas.width, 28);
-      ctx.fillStyle = '#F6C500';
-      ctx.fillRect(0, 28, canvas.width, 12);
-      ctx.fillStyle = '#1F6B45';
-      ctx.beginPath();
-      ctx.arc(1080, 145, 92, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#F6C500';
-      ctx.beginPath();
-      ctx.arc(1080, 145, 47, 0, Math.PI * 2);
-      ctx.fill();
 
-      if (logoImage) {
-        const logoSize = 116;
-        ctx.drawImage(logoImage, 72, 72, logoSize, logoSize);
-      }
-
-      ctx.fillStyle = '#1B1B1B';
-      ctx.font = '600 58px Poppins, Arial, sans-serif';
-      const commonNameHeight = drawWrappedText(displayCommonName, 72, 130, 860, 68, 2);
-      ctx.fillStyle = '#3F3F3F';
-      ctx.font = 'italic 36px Poppins, Arial, sans-serif';
-      drawWrappedText(displayScientificName, 72, 130 + commonNameHeight + 20, 880, 46, 2);
-
-      ctx.fillStyle = '#1F6B45';
-      ctx.fillRect(72, 378, 260, 8);
-      ctx.fillStyle = '#C8102E';
-      ctx.fillRect(350, 378, 110, 8);
-
-      // QR negro sobre blanco, con cuatro módulos completos de quiet zone.
-      const qr = qrcode(0, 'H');
+      const qr = qrcode(0, 'H'); // Nivel de corrección 'High' es adecuado.
       qr.addData(url);
       qr.make();
       const moduleCount = qr.getModuleCount();
-      const quietZoneModules = 4;
-      const moduleSize = Math.floor(900 / (moduleCount + quietZoneModules * 2));
-      const qrSize = moduleSize * (moduleCount + quietZoneModules * 2);
-      const panelPadding = 34;
-      const panelX = Math.round((canvas.width - qrSize - panelPadding * 2) / 2);
-      const panelY = 474;
+      
+      // Ajustamos el tamaño del módulo basándonos en la nueva resolución y el margen
+      const marginModules = 4; // Borde de 2 módulos en cada lado (total 4 módulos adicionales)
+      const moduleSize = canvas.width / (moduleCount + marginModules); 
 
-      ctx.fillStyle = '#F4F4F0';
-      ctx.fillRect(panelX - 10, panelY - 10, qrSize + panelPadding * 2 + 20, qrSize + panelPadding * 2 + 20);
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(panelX, panelY, qrSize + panelPadding * 2, qrSize + panelPadding * 2);
-      ctx.fillStyle = '#000000';
-      const qrX = panelX + panelPadding + quietZoneModules * moduleSize;
-      const qrY = panelY + panelPadding + quietZoneModules * moduleSize;
-      for (let row = 0; row < moduleCount; row++) {
-        for (let column = 0; column < moduleCount; column++) {
-          if (qr.isDark(row, column)) {
-            ctx.fillRect(qrX + column * moduleSize, qrY + row * moduleSize, moduleSize, moduleSize);
+      // Mismo degradado de alto contraste
+      const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      gradient.addColorStop(0, "#257732"); 
+      gradient.addColorStop(1, "#3e1a09");
+      ctx.fillStyle = gradient;
+      
+      // El logo sigue siendo un 25% del *nuevo* tamaño total del QR
+      const logoDimension = canvas.width * 0.25; 
+      const logoX = (canvas.width - logoDimension) / 2;
+      const logoY = (canvas.height - logoDimension) / 2;
+
+      for (let r = 0; r < moduleCount; r++) {
+        for (let c = 0; c < moduleCount; c++) {
+          if (qr.isDark(r, c)) {
+            // Ajuste de posición por el margen de 2 módulos
+            const x = (c + (marginModules / 2)) * moduleSize; 
+            const y = (r + (marginModules / 2)) * moduleSize; 
+            
+            if (!logoFailed && x < logoX + logoDimension && x + moduleSize > logoX && y < logoY + logoDimension && y + moduleSize > logoY) {
+              continue;
+            }
+
+            // Usamos cuadrados para máxima fiabilidad en la lectura
+            ctx.fillRect(x, y, moduleSize, moduleSize);
           }
         }
       }
-
-      ctx.fillStyle = '#1B1B1B';
-      ctx.font = '400 26px Poppins, Arial, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('Escanea para conocer esta planta', canvas.width / 2, 1510);
-      ctx.textAlign = 'start';
-
-      const qrBase64 = canvas.toDataURL('image/png');
-      console.log('Tarjeta QR generada:', { plantViewUrl: url, canvas: canvas.width + 'x' + canvas.height, moduleCount: moduleCount, moduleSize: moduleSize, length: qrBase64.length });
-      callback(qrBase64);
-    } catch (error) {
-      console.error('No se pudo exportar la tarjeta QR:', error);
-      callback(null);
+      
+      // Dibujar el logo si no falló
+      if (!logoFailed && logoImage) {
+        const borderRadius = 8; 
+        ctx.save();
+        ctx.beginPath();
+        // Dibujamos el rectángulo redondeado para el clip mask
+        ctx.moveTo(logoX + borderRadius, logoY);
+        ctx.arcTo(logoX + logoDimension, logoY, logoX + logoDimension, logoY + logoDimension, borderRadius);
+        ctx.arcTo(logoX + logoDimension, logoY + logoDimension, logoX, logoY + logoDimension, borderRadius);
+        ctx.arcTo(logoX, logoY + logoDimension, logoX, logoY, borderRadius);
+        ctx.arcTo(logoX, logoY, logoX + logoDimension, logoY, borderRadius);
+        ctx.closePath();
+        ctx.clip(); // Aplicar la máscara
+        ctx.drawImage(logoImage, logoX, logoY, logoDimension, logoDimension);
+        ctx.restore(); // Restaurar el contexto del canvas
+      }
+      
+      try {
+        const qrBase64 = canvas.toDataURL('image/png');
+        console.log('QR generado:', { plantViewUrl: url, canvas: canvas.width + 'x' + canvas.height, exists: !!qrBase64, moduleCount: moduleCount, length: qrBase64.length, mime: qrBase64.split(';', 1)[0], prefix: qrBase64.substring(0, 32) + '...' });
+        callback(qrBase64);
+      } catch (error) {
+        console.error('No se pudo exportar el QR:', error);
+        callback(null);
+      }
     }
   }
 
@@ -1039,7 +1000,7 @@ function handleFiles(event) {
         if (!registerResponse || !registerResponse.success) { diagnosticStop(4, new Error(registerResponse && registerResponse.message || 'registerPlantData no devolvió éxito.')); return; }
         setDiagnosticStep(4, 'success', 'Registro temporal creado.'); setDiagnosticStep(5, 'success', 'plantId=' + registerResponse.plantId); setDiagnosticStep(6, 'success', 'plantViewUrl=' + registerResponse.plantViewUrl);
         setDiagnosticStep(7, 'running');
-        generateStyledQR(registerResponse.plantViewUrl, 'TEST DIAGNÓSTICO', 'Planta de prueba', null, qrBase64 => {
+        generateStyledQR(registerResponse.plantViewUrl, null, qrBase64 => {
           if (!isValidQrDataUrl(qrBase64)) { diagnosticStop(8, new Error('QR inválido: se esperaba data:image/png;base64,.')); return; }
           setDiagnosticStep(7, 'success', 'generateStyledQR ejecutado.'); setDiagnosticStep(8, 'success', `QR PNG generado; longitud=${qrBase64.length}; prefix=${qrBase64.substring(0, 32)}...`);
           console.log('[DIAGNOSTICO] Antes de google.script.run.diagnosticSavePlantFiles', { plantId: registerResponse.plantId, qrBase64Exists: !!qrBase64, qrBase64Length: qrBase64.length, imagesDataLength: 1, firstImage: { name: imageData.name, mimeType: imageData.mimeType, base64Length: imageData.base64.length } });
@@ -1187,7 +1148,7 @@ function handleFiles(event) {
           
           showLoader('Generando Código QR...');
           const continueProcess = (logoBase64) => {
-            generateStyledQR(dataResponse.plantViewUrl, formObject.nombre_comun, formObject.nombre_cientifico, logoBase64, (qrBase64) => {
+            generateStyledQR(dataResponse.plantViewUrl, logoBase64, (qrBase64) => {
               if (!isValidQrDataUrl(qrBase64)) {
                 hideLoader();
                 submitBtn.disabled = false;
