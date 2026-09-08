@@ -655,16 +655,11 @@
       <button type="submit" id="submitBtn">Registrar Planta</button>
       <div id="status"></div>
     </form>
-    <section class="diagnostic-panel" aria-live="polite" hidden>
+    <section class="diagnostic-panel" aria-live="polite">
       <h3>Diagnóstico del proceso <small>(MODO DIAGNÓSTICO: no envía correo)</small></h3>
       <p>Usa exactamente una fotografía ya seleccionada. Esta prueba crea un registro y archivos <strong>TEST_DIAGNOSTICO</strong> separados.</p>
       <button type="button" id="diagnosticBtn">🧪 Ejecutar prueba de diagnóstico</button>
       <button type="button" id="diagnosticPrivateBtn">🔒 Ejecutar prueba privada (sin setSharing)</button>
-      <hr>
-      <h3>DIAGNÓSTICO DEL SISTEMA</h3>
-      <p>Estos diagnósticos no registran plantas ni envían correo. El de Drive crea únicamente una carpeta temporal dentro del coordinador real.</p>
-      <button type="button" id="diagnosticRealDriveBtn">Probar Drive real</button>
-      <button type="button" id="diagnosticGeminiBtn">Probar Gemini</button>
       <ul id="diagnosticSteps" class="diagnostic-steps"></ul>
       <div id="diagnosticResult" class="diagnostic-result"></div>
     </section>
@@ -695,9 +690,6 @@
   <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js">
   </script>
   <script>
-    const SHOW_DIAGNOSTICS = false;
-    document.querySelector('.diagnostic-panel').hidden = !SHOW_DIAGNOSTICS;
-
     window.addEventListener('load', function() {
     const statusEl = document.getElementById('location-status');
     const latInput = document.getElementById('latitud');
@@ -1009,37 +1001,8 @@ function handleFiles(event) {
       }).withFailureHandler(error => diagnosticStop(4, error)).diagnosticRegisterPlantData();
     }).catch(error => diagnosticStop(2, error));
   }
-  if (SHOW_DIAGNOSTICS) {
-    document.getElementById('diagnosticBtn').addEventListener('click', () => runDiagnostic(false));
-    document.getElementById('diagnosticPrivateBtn').addEventListener('click', () => runDiagnostic(true));
-  }
-
-  function showSystemDiagnostic(title, value) {
-    document.getElementById('diagnosticSteps').innerHTML = '';
-    document.getElementById('diagnosticResult').textContent = title + '\n\n' + JSON.stringify(value, null, 2);
-  }
-  function readCurrentDiagnosticImage() {
-    if (photoFiles.length !== 1) return Promise.reject(new Error('Seleccione exactamente UNA fotografía antes de ejecutar el diagnóstico.'));
-    return readDiagnosticPhoto(photoFiles[0]);
-  }
-  if (SHOW_DIAGNOSTICS) {
-    document.getElementById('diagnosticRealDriveBtn').addEventListener('click', () => {
-      readCurrentDiagnosticImage().then(imageData => {
-        document.getElementById('diagnosticResult').textContent = 'Ejecutando diagnóstico Drive real...';
-        google.script.run.withSuccessHandler(result => showSystemDiagnostic('DRIVE — RESULTADO TÉCNICO COMPLETO', result))
-          .withFailureHandler(error => showSystemDiagnostic('DRIVE — ERROR DE LLAMADA', { error: error && (error.message || String(error)) }))
-          .diagnosticRealFolderDriveAccess(imageData);
-      }).catch(error => showSystemDiagnostic('DRIVE — ENTRADA INVÁLIDA', { error: error.message || String(error) }));
-    });
-    document.getElementById('diagnosticGeminiBtn').addEventListener('click', () => {
-      readCurrentDiagnosticImage().then(imageData => {
-        document.getElementById('diagnosticResult').textContent = 'Ejecutando diagnóstico Gemini...';
-        google.script.run.withSuccessHandler(result => showSystemDiagnostic('GEMINI — RESULTADO TÉCNICO COMPLETO', result))
-          .withFailureHandler(error => showSystemDiagnostic('GEMINI — ERROR DE LLAMADA', { error: error && (error.message || String(error)) }))
-          .diagnosticGeminiIdentification(imageData);
-      }).catch(error => showSystemDiagnostic('GEMINI — ENTRADA INVÁLIDA', { error: error.message || String(error) }));
-    });
-  }
+  document.getElementById('diagnosticBtn').addEventListener('click', () => runDiagnostic(false));
+  document.getElementById('diagnosticPrivateBtn').addEventListener('click', () => runDiagnostic(true));
 
   document.getElementById('plantForm').addEventListener('submit', function(e) {
     e.preventDefault();
